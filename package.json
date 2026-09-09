@@ -1,0 +1,150 @@
+{
+  "name": "dsh-file-manager",
+  "description": "Workspace-scoped Monaco file manager for DeepSeek Harness",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/starstorm-ai/dsh-file-manager.git"
+  },
+  "homepage": "https://github.com/starstorm-ai/dsh-file-manager#readme",
+  "bugs": {
+    "url": "https://github.com/starstorm-ai/dsh-file-manager/issues"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "cordis",
+    "file-manager",
+    "monaco-editor"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types/types.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/index.js.map",
+    "lib/client.js",
+    "lib/client.js.map",
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts",
+    "lib/typert.host.js",
+    "lib/typert.host.d.ts",
+    "lib/typert.remote-client.js",
+    "lib/typert.remote-client.d.ts",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "THIRD_PARTY_NOTICES.txt",
+    "docs/*.md"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "packageManager": "pnpm@11.7.0",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "external": [
+        "@deepseek-ai/dsh-api-gateway/client"
+      ],
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-theme"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "build": "node --import tsx/esm scripts/build.mts",
+    "check": "node --import tsx/esm scripts/build.mts --check",
+    "dev": "tsx scripts/dev.mts start",
+    "dev:install": "tsx scripts/dev.mts install",
+    "dev:web": "tsx scripts/dev.mts web",
+    "dev:dump": "tsx scripts/dev.mts dump",
+    "dev:remove": "tsx scripts/dev.mts remove",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:package": "pnpm run build && node --import tsx/esm scripts/verify-package.mts",
+    "verify": "pnpm run check && pnpm run test && pnpm run test:package",
+    "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "workspace:^",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-api-gateway": "workspace:^",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-fs": "workspace:^",
+    "@deepseek-ai/dsh-sandbox": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^",
+    "@deepseek-ai/dsh-api-gateway": "workspace:^",
+    "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "@deepseek-ai/dsh-client-locale": "workspace:^",
+    "@deepseek-ai/dsh-client-store": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-conversation": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-renderer": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-session": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-theme": "workspace:^",
+    "@deepseek-ai/dsh-fs": "workspace:^",
+    "@deepseek-ai/dsh-fs-local": "workspace:^",
+    "@deepseek-ai/dsh-sandbox": "workspace:^",
+    "@deepseek-ai/dsh-session": "workspace:^",
+    "@deepseek-ai/dsh-typert-generator": "workspace:^",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@types/node": "^22.20.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
+    "esbuild": "0.28.2",
+    "lightningcss": "1.32.0",
+    "monaco-editor": "0.56.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsdown": "^0.22.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.8"
+  }
+}

@@ -1,0 +1,10 @@
+# File Manager is an additive DSH Web bundle. It inserts one dual-face plugin
+# and does not disable, replace, or modify any DeepSeek Harness provider.
+- insert:
+    - id: file-manager
+      name: dsh-file-manager
+      config:
+        maxFileBytes: 2097152
+        maxEntriesPerDirectory: 2000
+        showHiddenByDefault: false
+        editable: true

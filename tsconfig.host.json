@@ -1,0 +1,24 @@
+{
+  "extends": "./upstream/deepseek-harness/tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
+  },
+  "include": [
+    "src/index.ts",
+    "src/types.ts",
+    "src/host/**/*.ts"
+  ],
+  "references": [
+    { "path": "./upstream/deepseek-harness/vendor/cordis" },
+    { "path": "./upstream/deepseek-harness/vendor/schemastery" },
+    { "path": "./upstream/deepseek-harness/packages/util/brand" },
+    { "path": "./upstream/deepseek-harness/packages/llm/llm" },
+    { "path": "./upstream/deepseek-harness/packages/core/session" },
+    { "path": "./upstream/deepseek-harness/packages/sandbox/sandbox" },
+    { "path": "./upstream/deepseek-harness/packages/fs/fs" },
+    { "path": "./upstream/deepseek-harness/packages/api/session-controller/tsconfig.host.json" },
+    { "path": "./upstream/deepseek-harness/packages/typert/protocol" }
+  ]
+}
