@@ -1,7 +1,7 @@
 # DSH File Manager 插件实现方案
 
-> 状态：V1 已实现并通过仓库级验证  
-> 参考项目：`../dsh-embedded-codex` 及其固定的 DSH upstream  
+> 状态：V1 已实现并通过仓库级验证
+> 构建基线：仓库内固定的 DSH upstream
 > 目标布局：`Chat | File | 轨迹`
 
 ## 结论
@@ -43,19 +43,18 @@
 
 V1 保持单一活动文件，可以避免在顶层 `File` tab 内再引入一套复杂 tab 生命周期。Store 和 Monaco model URI 仍按可扩展方式设计，后续加入多文件不会改变 Host API。
 
-## 从参考项目得到的实现约束
+## 外部插件实现约束
 
 ### 外部插件工程方式
 
-`dsh-embedded-codex` 中复用构建、验证和 Bundle/Profile 开发方式：
+`dsh-file-manager` 按 DSH 的树外 Bundle 约定组织构建、验证与安装：
 
 - 固定 `upstream/deepseek-harness` 提交，保证构建可复现。
 - 使用相同的 Host/Client face、Typert 和 `clientBundle` 构建契约。
 - 发布前执行 `pnpm pack` 白名单与归档结构验证。
-- 日常开发把两个 bundle 链接到 Embedded Codex 的同一个隔离 Web profile。
+- 日常开发使用隔离 `.tmp/dsh-home` 中的稳定 `link:.`；发布边界验证使用内容哈希 tarball 安装。
 
-Embedded Codex 的 `cordis.patch.yml` 会禁用并替换多个版本相关 provider。File Manager
-不替换任何 provider，但仍通过自己的 `dsh.bundle.patch` 暴露一个只有 `insert` 的
+`File Manager` 不替换任何 provider，而是通过自己的 `dsh.bundle.patch` 暴露一个只有 `insert` 的
 `cordis.patch.yml`，让 `dsh plugin add` 能自动把它加入目标 profile。
 
 这是一层 Cordis 组合配置，不是对 DSH TypeScript/JavaScript 源码的 patch。它只插入
@@ -427,7 +426,14 @@ dsh-file-manager/
 │   └── package-contract.spec.ts
 ├── scripts/
 │   ├── build.mts
-│   └── verify-package.mts
+│   ├── dev.mts
+│   ├── test.mts
+│   └── lib/
+│       ├── dev-profile.mts
+│       ├── dsh.mts
+│       ├── package.mts
+│       ├── paths.mts
+│       └── process.mts
 └── upstream/deepseek-harness     # 固定提交的 submodule
 ```
 

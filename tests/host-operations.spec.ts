@@ -81,16 +81,18 @@ describe('FileManagerOperations', () => {
     writeFileSync(join(workspace, 'z.txt'), 'z')
     writeFileSync(join(workspace, '.env'), 'secret')
     writeFileSync(join(outside, 'outside.txt'), 'outside')
-    symlinkSync(join(outside, 'outside.txt'), join(workspace, 'escape.txt'))
-    symlinkSync(join(workspace, 'z.txt'), join(workspace, 'inside-link.txt'))
+    // Directory junctions exercise the same realpath boundary on Windows
+    // without requiring Developer Mode's file-symlink privilege.
+    symlinkSync(outside, join(workspace, 'escape'), 'junction')
+    symlinkSync(join(workspace, 'src'), join(workspace, 'inside-link'), 'junction')
 
     const hidden = await operations().list({ sessionId, path: '' }, signal())
-    expect(hidden.entries.map(entry => entry.name)).toEqual(['src', 'inside-link.txt', 'z.txt'])
-    expect(hidden.entries.find(entry => entry.name === 'inside-link.txt')).toMatchObject({
-      kind: 'file',
+    expect(hidden.entries.map(entry => entry.name)).toEqual(['inside-link', 'src', 'z.txt'])
+    expect(hidden.entries.find(entry => entry.name === 'inside-link')).toMatchObject({
+      kind: 'directory',
       symlink: true,
     })
-    expect(hidden.entries.some(entry => entry.name === 'escape.txt')).toBe(false)
+    expect(hidden.entries.some(entry => entry.name === 'escape')).toBe(false)
 
     const shown = await operations().list({ sessionId, path: '', showHidden: true }, signal())
     expect(shown.entries.map(entry => entry.name)).toContain('.env')
@@ -180,7 +182,7 @@ describe('FileManagerOperations', () => {
   it('rejects stale saves, read-only deployments, and paths outside the workspace', async () => {
     writeFileSync(join(workspace, 'note.txt'), 'one')
     writeFileSync(join(outside, 'outside.txt'), 'outside')
-    symlinkSync(join(outside, 'outside.txt'), join(workspace, 'escape.txt'))
+    symlinkSync(outside, join(workspace, 'escape'), 'junction')
     const api = operations()
     const opened = await api.read({ sessionId, path: 'note.txt' }, signal())
     writeFileSync(join(workspace, 'note.txt'), 'changed elsewhere')
@@ -197,7 +199,7 @@ describe('FileManagerOperations', () => {
       content: 'mine',
       expectedVersion: opened.version,
     }, signal())).rejects.toMatchObject({ code: 'file-manager/read-only' })
-    await expect(api.read({ sessionId, path: 'escape.txt' }, signal()))
+    await expect(api.read({ sessionId, path: 'escape/outside.txt' }, signal()))
       .rejects.toMatchObject({ code: 'file-manager/outside-workspace' })
   })
 

@@ -54,13 +54,13 @@ export default defineConfig((inlineConfig): UserConfig[] => {
     return {
       ...config,
       alias: {
-        ...(config.alias ?? {}),
+        ...config.alias,
         'dsh-file-manager/remote': resolve('lib/typert.remote-client.js'),
       },
       minify: true,
       plugins: [monacoPlugin(), ...(config.plugins ?? [])],
       outputOptions: {
-        ...(config.outputOptions ?? {}),
+        ...config.outputOptions,
         // DSH fetches one dynamic-plugin artifact; every lazy Monaco module is
         // folded into that entry rather than emitted as an unreachable chunk.
         codeSplitting: false,

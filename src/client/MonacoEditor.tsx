@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import * as monaco from './monaco-runtime.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { languageForPath } from './language.ts'
+import { normalizeMonacoColor } from './monaco-theme.ts'
 import css from './styles.module.css'
 
 export interface MonacoEditorProps {
@@ -30,7 +31,7 @@ interface LiveEditor {
 /** Resolve a CSS token from the File view, with a Monaco-safe fallback. */
 function token(element: HTMLElement, name: string, fallback: string): string {
   const value = getComputedStyle(element).getPropertyValue(name).trim()
-  return value === '' ? fallback : value
+  return normalizeMonacoColor(value === '' ? fallback : value)
 }
 
 /** Rebuild a Monaco theme from the currently resolved DSH CSS variables. */

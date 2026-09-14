@@ -120,6 +120,14 @@ export class FileManagerSessionModel {
     this.snapshot.set({ directories: {} })
   }
 
+  /** Rebuild the root listing after the Connection establishes or reconnects. */
+  async handleConnected(): Promise<void> {
+    if (this.disposed) return
+    const showHidden = this.snapshot.getSnapshot().directories['']?.showHidden
+    this.resetDirectories()
+    await this.loadDirectory('', showHidden, true)
+  }
+
   /** Read one file, superseding any earlier file selection. */
   async readFile(path: string): Promise<FileManagerReadValue> {
     this.ensureLive()
@@ -184,9 +192,14 @@ export class FileManagerSessionModel {
 
 /** Convert Remote and transport failures without retaining mutable error objects. */
 export function clientError(error: unknown): FileManagerClientError {
-  if (error instanceof Error) {
-    const code = 'code' in error && typeof error.code === 'string' ? error.code : 'file-manager/io'
-    return { code, message: error.message }
+  if (typeof error === 'object' && error !== null) {
+    const code = 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : 'file-manager/io'
+    const message = 'message' in error && typeof error.message === 'string'
+      ? error.message
+      : String(error)
+    return { code, message }
   }
   return { code: 'file-manager/io', message: String(error) }
 }

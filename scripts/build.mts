@@ -17,44 +17,100 @@ import ts from 'typescript'
 import { WorkspaceAnalyzer } from '../upstream/deepseek-harness/packages/typert/generator/src/analyzer.ts'
 import { FaceModelEmitter, type ModelEmitResult } from '../upstream/deepseek-harness/packages/typert/generator/src/emitter.ts'
 import { WorkspaceTypertGenerator } from '../upstream/deepseek-harness/packages/typert/generator/src/workspace.ts'
+import { REPOSITORY_ROOT, UPSTREAM_ROOT } from './lib/paths.mts'
+import { pnpm, run } from './lib/process.mts'
 
-const ROOT = resolve(import.meta.dirname, '..')
-const UPSTREAM = resolve(ROOT, 'upstream/deepseek-harness')
-const EXPECTED_UPSTREAM = 'a66e4702047846cdaa10c66c9d3df3951f5ea70d'
+const ROOT = REPOSITORY_ROOT
+const UPSTREAM = UPSTREAM_ROOT
 const MAX_CLIENT_RAW_BYTES = 16 * 1024 * 1024
 const MAX_CLIENT_GZIP_BYTES = 4 * 1024 * 1024
 const TEMP = resolve(ROOT, '.tmp')
 const SHADOW_PACKAGE = resolve(UPSTREAM, 'packages/external/dsh-file-manager')
 const TYPERT_HOST_CONFIG = resolve(TEMP, 'tsconfig.typert-host.json')
 const CHECK_ONLY = process.argv.includes('--check')
+const UPSTREAM_ARTIFACTS = [
+  'apps/cli/lib/bin.js',
+  'apps/web/dist/index.html',
+  'vendor/schemastery/lib/index.mjs',
+  'packages/llm/llm/lib/typert.host.js',
+  'packages/interaction/commands/lib/typert.host.js',
+  'packages/goal/goal/lib/typert.host.js',
+  'packages/subagent/subagent/lib/typert.host.js',
+] as const
 const UPSTREAM_REMOTE_OWNERS = [
+  '@deepseek-ai/dsh-agent-presets',
+  '@deepseek-ai/dsh-commands',
+  '@deepseek-ai/dsh-api-settings-controller',
+  '@deepseek-ai/dsh-goal',
+  '@deepseek-ai/dsh-llm',
+  '@deepseek-ai/dsh-cordis-host-runner',
+  '@deepseek-ai/dsh-host-plugin-inventory',
+  '@deepseek-ai/dsh-message-feedback',
+  '@deepseek-ai/dsh-session-reference',
+  '@deepseek-ai/dsh-subagent',
   '@deepseek-ai/dsh-api-session-controller',
   '@deepseek-ai/dsh-api-workspace-controller',
 ] as const
 
-function pnpm(args: readonly string[]): void {
-  execFileSync('pnpm', ['--pm-on-fail=ignore', ...args], {
-    cwd: ROOT,
-    stdio: 'inherit',
+function git(cwd: string, args: readonly string[]): string {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
     windowsHide: true,
+  }).trim()
+}
+
+function expectedSubmoduleCommit(): string {
+  if (!existsSync(resolve(UPSTREAM_ROOT, '.git'))
+    || !existsSync(resolve(UPSTREAM_ROOT, 'package.json'))) {
+    throw new Error(
+      'DeepSeek Harness submodule is not initialized; run git submodule update --init --recursive',
+    )
+  }
+  const entry = git(REPOSITORY_ROOT, ['ls-files', '--stage', '--', 'upstream/deepseek-harness'])
+  const match = /^160000 ([0-9a-f]{40})\s/.exec(entry)
+  if (match === null) throw new Error('upstream/deepseek-harness is not recorded as a Git submodule')
+  const expected = match[1]!
+  const actual = git(UPSTREAM_ROOT, ['rev-parse', 'HEAD'])
+  if (actual !== expected) {
+    throw new Error(
+      `DeepSeek Harness is checked out at ${actual}; run git submodule update --init --recursive to use ${expected}`,
+    )
+  }
+  return expected
+}
+
+async function buildUpstream(commit: string): Promise<void> {
+  const stampPath = resolve(REPOSITORY_ROOT, '.tmp/upstream-build.json')
+  const hasArtifacts = UPSTREAM_ARTIFACTS.every(path => existsSync(resolve(UPSTREAM_ROOT, path)))
+  const isDirty = git(UPSTREAM_ROOT, ['status', '--porcelain', '--untracked-files=no']).length > 0
+  let stampedCommit: string | undefined
+  if (existsSync(stampPath)) {
+    try {
+      const stamp = JSON.parse(readFileSync(stampPath, 'utf8')) as { commit?: unknown }
+      if (typeof stamp.commit === 'string') stampedCommit = stamp.commit
+    } catch {
+      // A damaged disposable stamp simply causes a clean upstream rebuild.
+    }
+  }
+  if (hasArtifacts && !isDirty && stampedCommit === commit) return
+
+  await pnpm(['install', '--frozen-lockfile'], {
+    cwd: UPSTREAM_ROOT,
+    env: { ...process.env, CI: 'true' },
   })
-}
-
-function git(args: readonly string[]): string {
-  return execFileSync('git', args, { cwd: UPSTREAM, encoding: 'utf8', windowsHide: true }).trim()
-}
-
-function verifyUpstream(): void {
-  if (!existsSync(resolve(UPSTREAM, 'package.json'))) {
-    throw new Error('DeepSeek Harness submodule is not initialized; run git submodule update --init --recursive')
-  }
-  const actual = git(['rev-parse', 'HEAD'])
-  if (actual !== EXPECTED_UPSTREAM) {
-    throw new Error(`DeepSeek Harness is ${actual}; expected pinned commit ${EXPECTED_UPSTREAM}`)
-  }
-  if (git(['status', '--porcelain', '--untracked-files=no']) !== '') {
-    throw new Error('DeepSeek Harness tracked files are modified; refusing a non-reproducible build')
-  }
+  await pnpm(['run', 'clean'], {
+    cwd: UPSTREAM_ROOT,
+    env: { ...process.env, CI: 'true' },
+  })
+  await pnpm(['run', 'build'], {
+    cwd: UPSTREAM_ROOT,
+    env: { ...process.env, CI: 'true' },
+  })
+  const missing = UPSTREAM_ARTIFACTS.filter(path => !existsSync(resolve(UPSTREAM_ROOT, path)))
+  if (missing.length > 0) throw new Error(`DeepSeek Harness build did not emit: ${missing.join(', ')}`)
+  mkdirSync(dirname(stampPath), { recursive: true })
+  writeFileSync(stampPath, `${JSON.stringify({ commit }, null, 2)}\n`, 'utf8')
 }
 
 function clean(): void {
@@ -295,21 +351,48 @@ function verifyArtifacts(): void {
   console.log(`dsh-file-manager: client.js ${(raw / 1024 / 1024).toFixed(2)} MiB raw, ${(gzip / 1024 / 1024).toFixed(2)} MiB gzip`)
 }
 
-verifyUpstream()
+if (!existsSync(resolve(REPOSITORY_ROOT, 'node_modules'))) {
+  throw new Error('dependencies are not installed; run pnpm install --frozen-lockfile first')
+}
+
+const upstreamCommit = expectedSubmoduleCommit()
+await buildUpstream(upstreamCommit)
 clean()
+generateUpstreamRemoteContracts()
+await run(process.execPath, [
+  resolve(ROOT, 'node_modules/typescript/bin/tsc'),
+  '-b',
+  'tsconfig.host.json',
+], { cwd: REPOSITORY_ROOT })
 materializeShadowPackage()
 try {
-  generateUpstreamRemoteContracts()
-  pnpm(['exec', 'tsc', '-b', 'tsconfig.host.json'])
   generateTypert()
-  pnpm(['exec', 'tsc', '-b', 'tsconfig.client.json'])
-  if (CHECK_ONLY) {
-    console.log('dsh-file-manager: Host and Client typecheck passed')
-  } else {
-    await generateMonacoAssets()
-    pnpm(['exec', 'tsdown', '--env.DSH_BUILD_FACE', 'client'])
-    verifyArtifacts()
-  }
 } finally {
   cleanupShadowPackage()
 }
+await run(process.execPath, [
+  resolve(ROOT, 'node_modules/typescript/bin/tsc'),
+  '-b',
+  'tsconfig.client.json',
+], { cwd: REPOSITORY_ROOT })
+if (CHECK_ONLY) {
+  console.log('dsh-file-manager: Host and Client typecheck passed')
+} else {
+  await generateMonacoAssets()
+  // DSH's standard client bundler resolves plugin metadata from the upstream
+  // workspace, so keep the temporary manifest visible for the whole bundle.
+  // Invoke tsdown directly: asking pnpm to re-evaluate the workspace while the
+  // disposable package exists would trigger an unnecessary install.
+  materializeShadowPackage()
+  try {
+    await run(process.execPath, [
+      resolve(ROOT, 'node_modules/tsdown/dist/run.mjs'),
+      '--env.DSH_BUILD_FACE',
+      'client',
+    ], { cwd: REPOSITORY_ROOT })
+    verifyArtifacts()
+  } finally {
+    cleanupShadowPackage()
+  }
+}
+process.stdout.write('built DeepSeek Harness prerequisites and dsh-file-manager\n')

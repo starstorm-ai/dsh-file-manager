@@ -3,7 +3,12 @@ import type { editor } from 'monaco-editor'
 import { flattenExplorerRows } from '../src/client/Explorer.tsx'
 import { createFileManagerViewStore, isActiveFileDirty } from '../src/client/file-store.ts'
 import { languageForPath, languageLabel } from '../src/client/language.ts'
-import { fileManagerErrorKey } from '../src/client/locales.ts'
+import {
+  fileManagerErrorKey,
+  fileManagerErrorText,
+  type FileManagerTranslate,
+} from '../src/client/locales.ts'
+import { normalizeMonacoColor } from '../src/client/monaco-theme.ts'
 import type { FileManagerModelSnapshot } from '../src/client/model.ts'
 
 describe('File Manager view state', () => {
@@ -131,9 +136,24 @@ describe('File Manager view state', () => {
     expect(languageLabel('typescript')).toBe('TypeScript')
   })
 
+  it('expands CSS shorthand colors for Monaco token themes', () => {
+    expect(normalizeMonacoColor('#fff')).toBe('#ffffff')
+    expect(normalizeMonacoColor('#0f08')).toBe('#00ff0088')
+    expect(normalizeMonacoColor('#1f2023')).toBe('#1f2023')
+    expect(normalizeMonacoColor('rgb(1, 2, 3)')).toBe('rgb(1, 2, 3)')
+  })
+
   it('maps Host error codes to stable localized message keys', () => {
     expect(fileManagerErrorKey('file-manager/stale-version')).toBe('error.stale')
     expect(fileManagerErrorKey('file-manager/outside-workspace')).toBe('error.outsideWorkspace')
     expect(fileManagerErrorKey('unknown')).toBe('error.generic')
+  })
+
+  it('shows diagnostics for an unknown client or transport failure', () => {
+    const t = ((key: string) => key) as FileManagerTranslate
+    expect(fileManagerErrorText({
+      code: 'gateway/internal',
+      message: 'client api: fileManager/list failed',
+    }, t)).toBe('error.generic [gateway/internal] client api: fileManager/list failed')
   })
 })

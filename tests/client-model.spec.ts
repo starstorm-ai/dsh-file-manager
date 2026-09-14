@@ -86,6 +86,30 @@ describe('FileManagerSessionModel', () => {
     expect(list).toHaveBeenCalledTimes(2)
   })
 
+  it('reloads the root after the Connection becomes ready', async () => {
+    let calls = 0
+    const list = vi.fn(async (): Promise<RemoteResult<FileManagerListValue>> => {
+      calls += 1
+      if (calls === 1) {
+        return {
+          ok: false,
+          error: new RemoteError('file-manager/io', 'connection was not ready', { path: '' }),
+        }
+      }
+      return { ok: true, value: listValue('connected') }
+    })
+    const model = new FileManagerSessionModel(SessionId('reconnect'), { ...unusedRemote(), list })
+
+    await model.loadDirectory('')
+    expect(model.snapshot.getSnapshot().directories['']?.status).toBe('error')
+    await model.handleConnected()
+
+    expect(model.snapshot.getSnapshot().directories['']).toMatchObject({
+      status: 'ready',
+      entries: [{ name: 'connected' }],
+    })
+  })
+
   it('cancels the previous file read and all work on dispose', async () => {
     const reads: AbortSignal[] = []
     const read = vi.fn((_request, requestSignal: AbortSignal) => {
@@ -121,6 +145,9 @@ describe('FileManagerSessionModel', () => {
     })
     expect(clientError(new RemoteError('gateway/cancelled', 'cancelled', {}))).toEqual({
       code: 'gateway/cancelled', message: 'cancelled',
+    })
+    expect(clientError({ code: 'file-manager/no-workspace', message: 'not ready' })).toEqual({
+      code: 'file-manager/no-workspace', message: 'not ready',
     })
   })
 })

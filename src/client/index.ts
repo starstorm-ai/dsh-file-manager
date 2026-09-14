@@ -29,9 +29,8 @@ export type {
 /** Required services for the generated Remote, Session source, slot, locale, and theme. */
 export const inject = ['remote', 'sessions', 'slots', 'uiSession', 'locale', 'theme']
 
-/** Mount the File Manager namespace and register one order-5 conversation View. */
-export async function apply(ctx: Context): Promise<() => Promise<void>> {
-  const disposeRemote = await ctx.remote.$mount(fileManagerRemote)
+/** Register the File Manager UI after its generated Remote namespace is visible. */
+function registerUi(ctx: Context): void {
   const theme = createSnapshotStore(ctx.theme.getTheme())
   ctx.on('theme/change', snapshot => { theme.set(snapshot) })
   ctx.effect(() => installMonacoAssets(), 'dsh-file-manager: Monaco assets')
@@ -65,6 +64,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     for (const model of liveModels) model.dispose()
     liveModels.clear()
   }, 'dsh-file-manager: Session model collection')
+  ctx.on('connection/reset', () => {
+    for (const model of liveModels) void model.handleConnected()
+  })
 
   ctx.uiSession.provide({
     hooks: ['fileManager'],
@@ -115,6 +117,29 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     },
   }, FileView))
 
-  return async () => { await disposeRemote() }
+}
+
+/** Mount the File Manager namespace and register one order-5 conversation View. */
+export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  const disposeRemote = await ctx.remote.$mount(fileManagerRemote)
+  const ui = ctx.inject([
+    'sessions',
+    'remote.fileManager',
+    'slots',
+    'uiSession',
+    'locale',
+    'theme',
+  ], registerUi)
+  try {
+    await ui
+  } catch (error) {
+    await ui.dispose()
+    await disposeRemote()
+    throw error
+  }
+  return async () => {
+    await ui.dispose()
+    await disposeRemote()
+  }
 }
 

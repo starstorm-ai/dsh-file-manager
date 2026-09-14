@@ -76,9 +76,18 @@ export function fileManagerErrorKey(code: string): FileManagerLocaleKey {
   }
 }
 
-/** Render a stable domain error in the active locale. */
-export function fileManagerErrorText(error: { readonly code: string }, t: FileManagerTranslate): string {
-  return t(fileManagerErrorKey(error.code))
+/** Render a localized domain error and retain diagnostics for unknown transport failures. */
+export function fileManagerErrorText(
+  error: { readonly code: string; readonly message?: string },
+  t: FileManagerTranslate,
+): string {
+  const key = fileManagerErrorKey(error.code)
+  const summary = t(key)
+  if (key !== 'error.generic') return summary
+  const message = error.message?.trim()
+  return message === undefined || message === ''
+    ? `${summary} [${error.code}]`
+    : `${summary} [${error.code}] ${message}`
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

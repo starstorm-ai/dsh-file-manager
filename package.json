@@ -90,18 +90,14 @@
     }
   },
   "scripts": {
-    "build": "node --import tsx/esm scripts/build.mts",
-    "check": "node --import tsx/esm scripts/build.mts --check",
+    "build": "tsx scripts/build.mts",
+    "build:embedded-codex": "tsx scripts/embedded-codex.mts",
+    "test": "tsx scripts/test.mts",
     "dev": "tsx scripts/dev.mts start",
     "dev:install": "tsx scripts/dev.mts install",
     "dev:web": "tsx scripts/dev.mts web",
-    "dev:dump": "tsx scripts/dev.mts dump",
     "dev:remove": "tsx scripts/dev.mts remove",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:package": "pnpm run build && node --import tsx/esm scripts/verify-package.mts",
-    "verify": "pnpm run check && pnpm run test && pnpm run test:package",
-    "prepack": "pnpm run build"
+    "prepack": "tsx scripts/build.mts"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:^",
@@ -133,6 +129,7 @@
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-typert-generator": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",

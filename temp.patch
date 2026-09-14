@@ -1,0 +1,1848 @@
+diff --git a/.gitignore b/.gitignore
+index 4e5a03f564eb4795029dc3bb893500881a138a40..b679539ee2743c0a3c501afa5ea7b6627ed88c81 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,6 +1,6 @@
+ node_modules/
+ .pnpm-store/
+-lib/
++/lib/
+ .tmp/
+ *.tsbuildinfo
+ *.tgz
+diff --git a/README.md b/README.md
+index b84fab316952d8fc43489948d78b067da3b77a3d..984858696a302d6df69ee743ce9e5f6e41569788 100644
+--- a/README.md
++++ b/README.md
+@@ -5,228 +5,145 @@ kind: "package-bundle"
+ 
+ # dsh-file-manager
+ 
+-`dsh-file-manager` 是 DeepSeek Harness 的外部 Bundle。它在 Web Session 的
+-`conversation.view` 中加入 `File`，和 `dsh-embedded-codex` 一起运行时标题栏为：
++`dsh-file-manager` 是 DeepSeek Harness 的外部 Bundle。它在 Web Session 的 `conversation.view` 中增加 `File`，提供工作区文件树、文本查看与编辑、Monaco 语法高亮、明暗主题、中英文文案、`Cmd/Ctrl+S` 保存、外部修改冲突保护和 Session 状态恢复。
+ 
+-```text
+-Chat | File | 轨迹
+-```
+-
+-File Manager 提供工作区文件树、文本查看与编辑、Monaco 语法高亮、明暗主题、
+-中英文文案、`Cmd/Ctrl+S` 保存、外部修改冲突保护和 Session 状态恢复。
++File Manager 使用当前 Session 的权威工作目录。它不会修改 DSH 源码、替换 provider 或改变其他 Agent 预设；安装到任意兼容 DSH 的 Web Profile 后即可使用。
+ 
+ ## 环境要求
+ 
+ - Node.js `^22.19.0` 或 `>=24.0.0`
+ - pnpm `11.7.0`
+-- Git，且两个仓库都初始化 submodule
+-- `dsh-embedded-codex` 与本仓库默认放在同一个父目录
+-- 已登录 Codex；登录和模型配置仍由 `dsh-embedded-codex` 负责
+-
+-推荐目录结构：
+-
+-```text
+-parent/
+-├── dsh-embedded-codex/
+-└── dsh-file-manager/
+-```
++- Git，且克隆时初始化 submodule
+ 
+-如果 Embedded Codex 不在默认位置，可以设置绝对路径：
++本项目固定使用仓库内 `upstream/deepseek-harness` 指向的 DSH 版本。该 submodule 只参与开发和打包，发布归档不包含 `upstream/`。
+ 
+-```bash
+-export DSH_EMBEDDED_CODEX_ROOT=/absolute/path/to/dsh-embedded-codex
+-```
+-
+-PowerShell 使用：
++## 从克隆到启动 Web
+ 
+ ```powershell
+-$env:DSH_EMBEDDED_CODEX_ROOT = 'D:\path\to\dsh-embedded-codex'
+-```
+-
+-## 从两个仓库启动 Embedded Codex + File Manager
+-
+-第一次使用时，先准备 Embedded Codex：
+-
+-```bash
+-cd ../dsh-embedded-codex
+-git submodule update --init --recursive
+-pnpm install --frozen-lockfile
+-pnpm exec codex login
+-```
+-
+-然后准备并启动 File Manager：
+-
+-```bash
+-cd ../dsh-file-manager
+-git submodule update --init --recursive
++git clone --recurse-submodules <repository-url> D:\dsh-file-manager
++Set-Location D:\dsh-file-manager
+ pnpm install --frozen-lockfile
+ pnpm dev
+ ```
+ 
+ `pnpm dev` 会完成以下工作：
+ 
+-1. 调用 `dsh-embedded-codex` 的构建脚本，准备它固定版本的 DSH CLI 和 Codex Bundle。
+-2. 构建 File Manager 的 Host、Remote codec、类型和内含 Monaco 的 `lib/client.js`。
+-3. 把 `dsh-embedded-codex` 和 `dsh-file-manager` 都以稳定 `link:` 依赖加入同一个隔离
+-   Web profile。
+-4. 使用 Embedded Codex 固定的 DSH CLI 启动 Web。
++1. 在需要时安装并构建 `upstream/deepseek-harness`。
++2. 生成 Remote 合约并构建本插件的 Host、Client 和 Monaco 资源。
++3. 首次运行时把当前仓库稳定链接到隔离的 `.tmp/dsh-home`；后续构建复用该链接。
++4. 启动 DSH Web。
+ 
+-这个联合开发环境固定使用：
++打开或创建一个 Session，然后切换到 `File` 即可。File Manager 使用该 Session 的工作目录；切换 Session 时文件树和编辑状态相互隔离。
+ 
+-```text
+-../dsh-embedded-codex/.tmp/dsh-home
+-```
++如果克隆时没有携带 submodule，先执行：
+ 
+-它不是默认的 `~/.dsh`。因此日常开发请使用本仓库的 `pnpm dev:*` 命令，不要另开一个
+-未设置相同 `DSH_HOME` 的全局 `dsh web`，否则会启动另一套 profile。
+-
+-Web 启动后新建或打开 Session，选择 `Codex 模式`，然后切换标题栏中的 `File`。
+-File Manager 使用该 Session 的工作目录；切换 Session 时文件树和编辑状态相互隔离。
++```powershell
++git submodule update --init --recursive
++```
+ 
+ ## 常用命令
+ 
+ | 命令 | 用途 |
+ |---|---|
+-| `pnpm dev` | 构建两个仓库、确保两个本地链接并启动 Embedded Codex Web |
+-| `pnpm dev:install` | 构建并把 File Manager 的真实 tarball 安装到联合开发 profile，不启动 Web |
+-| `pnpm dev:web` | 启动已经准备好的联合开发 Web，不重新构建 |
+-| `pnpm dev:dump` | 打印联合开发 Web profile 的最终 Cordis 配置，不启动 Web |
+-| `pnpm dev:remove` | 只移除 File Manager，保留 Embedded Codex、配置和 Session 数据 |
+-| `pnpm build` | 构建 File Manager，不启动 DSH |
+-| `pnpm check` | 执行 Host 与 Client 严格类型检查及 Typert 生成检查 |
+-| `pnpm test` | 执行单元与契约测试 |
+-| `pnpm test:package` | 构建、`pnpm pack` 并验证发布文件白名单 |
+-| `pnpm verify` | 执行完整类型、测试、构建与 package 验证 |
+-| `pnpm pack` | 生成可安装 `.tgz`；`prepack` 会自动先执行构建 |
+-
+-## 本地链接开发
+-
+-日常开发直接执行：
+-
+-```bash
+-pnpm dev
+-```
++| `pnpm dev` | 构建、确保本地开发链接并启动隔离的 DSH Web |
++| `pnpm dev:install` | 构建、打包并执行一次真实 tarball 安装，但不启动 Web |
++| `pnpm dev:web` | 启动已经安装好的隔离 Web，不重新构建 |
++| `pnpm dev:remove` | 从隔离 Web Profile 移除开发插件 |
++| `pnpm build` | 先准备 DeepSeek Harness，再生成并构建本插件 |
++| `pnpm build:embedded-codex` | 构建、打包本插件，并安装到 `D:\dsh-embedded-codex` 的隔离开发 Web Profile |
++| `pnpm test` | 执行 build、Vitest、lint、文档检查、开发链接和 tarball 隔离安装测试 |
++| `pnpm pack` | 生成可安装的 `.tgz`；pnpm 会通过 `prepack` 自动先执行 build |
+ 
+-第一次运行会把两个仓库链接到 Embedded Codex 的隔离 Web profile。后续再次运行时，如果
+-链接没有变化，不会重复安装 package。修改 File Manager 后：
++调试单个测试不需要额外的 package script，例如：
+ 
+-1. 执行 `pnpm build` 重新生成 `lib/`。
+-2. Client-only 改动通常会被 DSH Client HMR 检测并在浏览器内原地重载。
+-3. 如果页面没有更新，刷新浏览器。
+-4. 修改 Host、Remote API 或生成类型后，按 `Ctrl+C` 停止 Web，再执行
+-   `pnpm dev:web`。
+-
+-也可以在一个终端保持 Web 运行，在另一个终端修改代码并执行：
+-
+-```bash
+-pnpm build
++```powershell
++pnpm exec vitest run tests/package-contract.spec.ts
+ ```
+ 
+-本地链接直接读取本仓库最新的 `lib/`，所以重新构建后不需要再次运行
+-`dsh plugin add`。
++### 开发链接与真实安装
+ 
+-## 用真实 tarball 验证 Embedded Codex 集成
++日常开发使用 `pnpm dev`。首次运行会通过稳定的 `link:` 依赖把本仓库注册进隔离的 DSH Web Profile；以后修改插件代码只会重新构建 `lib`，不会再次执行 `pnpm add`。插件运行时直接使用仓库根目录中由 `pnpm install --frozen-lockfile` 安装并由 `pnpm build` 准备好的固定 DSH 依赖。
+ 
+-发布前使用：
++需要验证发布包时使用：
+ 
+-```bash
++```powershell
+ pnpm dev:install
+-pnpm dev:dump
+ pnpm dev:web
+ ```
+ 
+-`pnpm dev:install` 会：
++`pnpm dev:install` 会生成带内容哈希文件名的真实 `.tgz`，只删除并重建 `.tmp/dsh-home/profiles/web/node_modules`，然后通过固定版本的 DSH CLI 安装 tarball。Profile 配置、lockfile、用户 patch 和 Session 数据不会被删除。这样既验证真实发布边界，也避免同一版本号复用旧插件内容。再次执行 `pnpm dev` 会把 Profile 切回本地链接模式。
+ 
+-1. 构建 Embedded Codex 和 File Manager。
+-2. 将 File Manager 打成带内容 hash 的 `.tmp/packs/*.tgz`，避免相同版本号命中旧缓存。
+-3. 保持 Embedded Codex 为本地链接。
+-4. 将 File Manager tarball 安装进 Embedded Codex 的同一个隔离 Web profile。
++切换模式或重新安装前必须先停止正在运行的 DSH Web。Windows 会阻止删除正在使用的 `node_modules`；脚本会重试短暂的文件占用，仍无法处理时会提示停止 Web，不会扩大删除范围。
+ 
+-切换本地链接和 tarball 前先停止正在运行的 Web。命令只重建该隔离 profile 的
+-`node_modules`；profile 配置、Codex 登录和 Session 数据不会删除。再次执行
+-`pnpm dev` 会把 File Manager 切回本地链接模式。
++### 与 Embedded Codex 联调
+ 
+-`pnpm dev:dump` 的输出中应同时出现：
++先停止正在运行的 Embedded Codex Web，然后在本仓库执行：
+ 
+-```text
+-dsh-embedded-codex
+-dsh-file-manager
++```powershell
++pnpm build:embedded-codex
++Set-Location D:\dsh-embedded-codex
++pnpm dev
+ ```
+ 
+-## 安装到其他现有 DSH
++`build:embedded-codex` 会把 File Manager 构建成内容哈希 tarball，重建 Embedded Codex 临时 Web Profile 的 `node_modules`，再安装到 `D:\dsh-embedded-codex\.tmp\dsh-home`。Profile 配置和 Session 数据不会删除。这里有意不使用跨仓库 `link:`：两个独立 checkout 各自拥有一份 DSH 依赖，源码链接会让 Cordis、文件系统和 Typert Remote 出现重复运行时。每次修改 File Manager 后重新执行该命令即可更新联调版本。
+ 
+-如果不使用 Embedded Codex 的隔离开发环境，可以先生成普通 tarball：
++## 安装到现有 DSH
+ 
+-```bash
++先生成本地 tarball：
++
++```powershell
+ pnpm pack
+ ```
+ 
+-然后安装到目标 DSH 的 Web profile：
++然后通过任意兼容 DSH 的 Web Profile 安装并启动：
+ 
+-```bash
+-dsh plugin --profile web add ./dsh-file-manager-0.1.0.tgz
+-dsh --profile web --dump-config
++```powershell
++dsh plugin --profile web add .\dsh-file-manager-0.1.0.tgz
+ dsh web
+ ```
+ 
+-本包声明了：
+-
+-```json
+-{
+-  "dsh": {
+-    "bundle": {
+-      "patch": "./cordis.patch.yml"
+-    }
+-  }
+-}
+-```
+-
+-所以 `dsh plugin add` 会自动把 `dsh-file-manager` 加入
+-`dsh.profile.bundles`，并应用包内 `cordis.patch.yml`。不需要手工编辑 profile 来插入
+-File Manager row。
+-
+-这里的 `cordis.patch.yml` 是 Cordis 组合层，只负责插入插件：
++移除插件：
+ 
+-```yaml
+-- insert:
+-    - id: file-manager
+-      name: dsh-file-manager
++```powershell
++dsh plugin --profile web remove dsh-file-manager
+ ```
+ 
+-它不会修改 DSH 源码，也不会禁用或替换任何 DSH provider。真正的源码 patch 是
+-`dsh-embedded-codex/compat/patches/*.patch` 那类 unified diff，两者用途不同。
++包发布到 npm 后，也可以直接按包名安装：
+ 
+-包发布到 npm 后，也可以按包名安装：
+-
+-```bash
++```powershell
+ dsh plugin --profile web add dsh-file-manager
+ dsh web
+ ```
+ 
+-移除插件：
++## 构建说明
+ 
+-```bash
+-dsh plugin --profile web remove dsh-file-manager
+-```
++父仓库的 Git submodule gitlink 是唯一的 DSH commit 来源，不额外维护 commit 或源码摘要文件。`pnpm build` 会检查本地 submodule 是否与 gitlink 一致，并使用 `.tmp/upstream-build.json` 缓存已经完成的 DSH 构建；首次构建、gitlink 变化、产物缺失或 submodule 有源码修改时会重新构建 DSH。
+ 
+-DSH 会同时从依赖和 `dsh.profile.bundles` 中移除它。
++完整构建顺序：
+ 
+-## 配置
++```text
++DeepSeek Harness dependencies and build
++  -> DSH Remote prerequisite contracts
++  -> File Manager Host declarations and Typert Remote codec
++  -> File Manager Client declarations
++  -> embedded Monaco styles and workers
++  -> runtime and Web client bundles
++  -> package structure and size verification
++```
+ 
+-| 配置 | 默认值 | 作用 |
+-|---|---:|---|
+-| `maxFileBytes` | `2097152`（2 MiB） | 单次完整读取和保存的 Host 硬上限 |
+-| `maxEntriesPerDirectory` | `2000` | 单层目录最多返回的可见条目数 |
+-| `showHiddenByDefault` | `false` | 是否默认显示点文件 |
+-| `editable` | `true` | 设为 `false` 后只允许浏览和查看 |
++构建输出位于 `lib/`。发布包包含 Host、Client、Typert Remote、类型声明、`cordis.patch.yml` 和许可证文件，不包含 `src/`、`upstream/`、`node_modules/` 或 `.tmp/`。
+ 
+-在 Embedded Codex 联合开发环境中，用户覆盖文件位于：
++## Bundle 与配置
+ 
+-```text
+-../dsh-embedded-codex/.tmp/dsh-home/profiles/web/cordis.patch.yml
++`package.json` 通过 `dsh.bundle.patch` 声明包内的 `cordis.patch.yml`。执行 `dsh plugin --profile web add ...` 后，DSH 会把 `dsh-file-manager` 加入 `dsh.profile.bundles`，并插入：
++
++```yaml
++- insert:
++    - id: file-manager
++      name: dsh-file-manager
+ ```
+ 
+-例如，把完整配置写成一个按 id 定位的覆盖项：
++可以在更晚的 Profile patch 中覆盖 `file-manager` 条目：
+ 
+ ```yaml
+ - id: file-manager
+@@ -237,117 +154,49 @@ DSH 会同时从依赖和 `dsh.profile.bundles` 中移除它。
+     editable: true
+ ```
+ 
+-Cordis patch 会替换这一 row 的完整 `config`，不会深度合并，所以覆盖时应写全需要保留的
+-字段。Web profile 使用 live patch reload；为了避免正在编辑文件时状态变化，调整 Host 配置
+-后仍建议重启 Web。
++| 字段 | 默认值 | 用途 |
++|---|---:|---|
++| `maxFileBytes` | `2097152`（2 MiB） | 单次完整读取和保存的 Host 硬上限 |
++| `maxEntriesPerDirectory` | `2000` | 单层目录最多返回的可见条目数 |
++| `showHiddenByDefault` | `false` | 是否默认显示点文件 |
++| `editable` | `true` | 设为 `false` 后只允许浏览和查看 |
++
++Cordis patch 会替换该 row 的完整 `config`，不会深度合并，所以覆盖时应写全需要保留的字段。
+ 
+ ## 已实现能力
+ 
+ - 文件树逐层加载，目录优先排序，支持刷新、隐藏文件切换和键盘导航。
+-- 单一活动文件编辑器；切换顶层 tab 后保留未保存内容、光标、选区和滚动位置。
+-- TypeScript/JavaScript、JSON、HTML、CSS 系列使用 Monaco worker 语言服务；另含
+-  Markdown、YAML、Shell、Python、Go、Rust、Java、C/C++ 等常见语法高亮。
+-- Monaco 样式与五类 worker 在构建期内联到一个 `client.js`，运行时不访问 CDN。
+-- 保存采用读取版本令牌与原子 `replaceIfVersion`，不会静默覆盖 Agent、Git 或外部编辑器
+-  已经修改的文件。
++- 单一活动文件编辑器；切换顶层视图后保留未保存内容、光标、选区和滚动位置。
++- TypeScript/JavaScript、JSON、HTML、CSS 系列使用 Monaco worker 语言服务；Markdown、YAML、Shell、Python、Go、Rust、Java、C/C++ 等常见语言支持语法高亮。
++- Monaco 样式与五类 worker 在构建期内联到 `client.js`，运行时不访问 CDN。
++- 保存使用读取版本令牌和原子 `replaceIfVersion`，不会静默覆盖 Agent、Git 或外部编辑器已经修改的文件。
+ - 所有浏览与编辑均严格限制在当前 Session 的权威 `cwd` 中。
+ - 二进制、无效 UTF-8、超限、权限、路径和版本冲突均有稳定错误码与 UI 状态。
+ 
+ V1 暂不包含新建、删除、重命名、多编辑器页签、二进制预览、全局搜索和工作区级 LSP。
+ 
+-## 安全边界
+-
+-浏览器从不提供可信 `cwd`，只发送 `sessionId` 与规范化相对路径。每个 Remote 请求都会：
+-
+-1. 重新通过 `SessionController.inspect` 获取 Session 的权威工作区。
+-2. 拒绝绝对路径、反斜杠、NUL、`.`、`..` 与空路径段。
+-3. 使用文件系统 canonical containment 阻止路径或符号链接逃逸。
+-4. 对读取执行字节上限、fatal UTF-8 解码和 NUL 检查。
+-5. 对写入执行 `workspace-write` sandbox policy 与版本条件原子替换。
+-
+-## 构建说明
+-
+-本仓库和 `dsh-embedded-codex` 的 DeepSeek Harness submodule 固定到同一提交。File Manager
+-自己的 upstream 用于 Host/Client TypeScript project reference、Typert Remote 生成以及 DSH
+-标准 client bundle 配置；发布归档不包含 `upstream/`。
+-
+-完整构建顺序：
+-
+-```text
+-校验固定 DSH upstream
+-  -> 生成 DSH Remote 前置契约
+-  -> File Manager Host 类型与 Typert Remote codec
+-  -> File Manager Client 类型
+-  -> 内联 Monaco 样式和五类 worker
+-  -> 单一 lib/client.js 动态插件 bundle
+-  -> package 结构与体积验证
+-```
+-
+-构建输出位于 `lib/`。`pnpm test:package` 会检查归档包含
+-`cordis.patch.yml`，且不包含 `src/`、`upstream/`、`node_modules/`、本机绝对路径或未发布的
+-hash chunk。
+-
+ ## 常见问题
+ 
+-### 找不到 `dsh-embedded-codex`
+-
+-默认要求两个仓库位于同一个父目录。如果不是，设置：
+-
+-```bash
+-export DSH_EMBEDDED_CODEX_ROOT=/absolute/path/to/dsh-embedded-codex
+-```
+-
+-然后重新执行 `pnpm dev`。
+-
+-### Web 中没有 File tab
+-
+-先停止 Web，然后执行：
+-
+-```bash
+-pnpm dev
+-```
+-
+-若仍未出现，运行 `pnpm dev:dump`，确认最终配置同时包含
+-`dsh-embedded-codex` 和 `dsh-file-manager`，再刷新浏览器。
+-
+ ### Web 仍显示旧的 File Manager
+ 
+-本地链接模式执行：
++执行 `pnpm dev:install` 后必须重启正在运行的 Web 进程：先按 `Ctrl+C`，再执行 `pnpm dev:web`。必要时在浏览器中按 `Ctrl+F5`。
+ 
+-```bash
+-pnpm build
+-```
++真实安装使用内容哈希 tarball 文件名，避免 pnpm 因版本号没有变化而复用旧插件内容。日常 `pnpm dev` 使用稳定链接，不经过 tarball 缓存。
+ 
+-然后刷新浏览器；Host 或 Remote 改动需要重启 `pnpm dev:web`。tarball 模式则重新执行：
++### 提示 submodule 未初始化或 commit 不一致
+ 
+-```bash
+-pnpm dev:install
+-pnpm dev:web
++```powershell
++git submodule update --init --recursive
+ ```
+ 
+-内容 hash tarball 会避免复用旧 package 内容。
++构建不会自动切换或更新 submodule commit。
+ 
+ ### 端口已占用或 Windows 提示文件正在使用
+ 
+-先在运行 DSH Web 的终端按 `Ctrl+C`，再执行 `pnpm dev`、`pnpm dev:install` 或
+-`pnpm dev:remove`。这些命令会调整联合开发 profile 的依赖，不应与运行中的 Web 同时执行。
+-
+-### 只想移除 File Manager，保留 Codex
+-
+-```bash
+-pnpm dev:remove
+-pnpm dev:web
+-```
+-
+-该命令不会删除 Embedded Codex Bundle、Codex 登录、profile 配置或 Session 数据。
++先在运行 DSH Web 的终端按 `Ctrl+C`，再执行 `pnpm dev`、`pnpm dev:install` 或 `pnpm dev:remove`。这些命令会调整隔离 Profile 的依赖，不应与运行中的 Web 同时执行。
+ 
+ ## 维护文档
+ 
+-详细设计、Remote API 和验收记录见
+-[`docs/dsh-file-manager-implementation-plan.md`](docs/dsh-file-manager-implementation-plan.md)。
+-
+-## License
++详细设计、Remote API 和验收记录见 [实现方案](docs/dsh-file-manager-implementation-plan.md)。
+ 
+-本项目使用 MIT License。Monaco 与打包进 Client 的第三方代码声明见
+-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 和
+-[`THIRD_PARTY_NOTICES.txt`](THIRD_PARTY_NOTICES.txt)。
++许可证见 [LICENSE](LICENSE)，第三方声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。
+diff --git a/docs/dsh-file-manager-implementation-plan.md b/docs/dsh-file-manager-implementation-plan.md
+index f54df79ba53c5705e06dc2d43d28c892cc4d6438..5d98e9e2699e3f1c87a4f76ce0bc1c77dee32669 100644
+--- a/docs/dsh-file-manager-implementation-plan.md
++++ b/docs/dsh-file-manager-implementation-plan.md
+@@ -1,7 +1,7 @@
+ # DSH File Manager 插件实现方案
+ 
+-> 状态：V1 已实现并通过仓库级验证  
+-> 参考项目：`../dsh-embedded-codex` 及其固定的 DSH upstream  
++> 状态：V1 已实现并通过仓库级验证
++> 构建基线：仓库内固定的 DSH upstream
+ > 目标布局：`Chat | File | 轨迹`
+ 
+ ## 结论
+@@ -43,19 +43,18 @@
+ 
+ V1 保持单一活动文件，可以避免在顶层 `File` tab 内再引入一套复杂 tab 生命周期。Store 和 Monaco model URI 仍按可扩展方式设计，后续加入多文件不会改变 Host API。
+ 
+-## 从参考项目得到的实现约束
++## 外部插件实现约束
+ 
+ ### 外部插件工程方式
+ 
+-`dsh-embedded-codex` 中复用构建、验证和 Bundle/Profile 开发方式：
++`dsh-file-manager` 按 DSH 的树外 Bundle 约定组织构建、验证与安装：
+ 
+ - 固定 `upstream/deepseek-harness` 提交，保证构建可复现。
+ - 使用相同的 Host/Client face、Typert 和 `clientBundle` 构建契约。
+ - 发布前执行 `pnpm pack` 白名单与归档结构验证。
+-- 日常开发把两个 bundle 链接到 Embedded Codex 的同一个隔离 Web profile。
++- 日常开发使用隔离 `.tmp/dsh-home` 中的稳定 `link:.`；发布边界验证使用内容哈希 tarball 安装。
+ 
+-Embedded Codex 的 `cordis.patch.yml` 会禁用并替换多个版本相关 provider。File Manager
+-不替换任何 provider，但仍通过自己的 `dsh.bundle.patch` 暴露一个只有 `insert` 的
++`File Manager` 不替换任何 provider，而是通过自己的 `dsh.bundle.patch` 暴露一个只有 `insert` 的
+ `cordis.patch.yml`，让 `dsh plugin add` 能自动把它加入目标 profile。
+ 
+ 这是一层 Cordis 组合配置，不是对 DSH TypeScript/JavaScript 源码的 patch。它只插入
+@@ -427,7 +426,14 @@ dsh-file-manager/
+ │   └── package-contract.spec.ts
+ ├── scripts/
+ │   ├── build.mts
+-│   └── verify-package.mts
++│   ├── dev.mts
++│   ├── test.mts
++│   └── lib/
++│       ├── dev-profile.mts
++│       ├── dsh.mts
++│       ├── package.mts
++│       ├── paths.mts
++│       └── process.mts
+ └── upstream/deepseek-harness     # 固定提交的 submodule
+ ```
+ 
+diff --git a/package.json b/package.json
+index effd4c1a32ff8ebd81fedffb93b1d54cfaa2c96a..f7e44405bb22681599a2a5abac4bd76d606560bb 100644
+--- a/package.json
++++ b/package.json
+@@ -90,18 +90,14 @@
+     }
+   },
+   "scripts": {
+-    "build": "node --import tsx/esm scripts/build.mts",
+-    "check": "node --import tsx/esm scripts/build.mts --check",
++    "build": "tsx scripts/build.mts",
++    "build:embedded-codex": "tsx scripts/embedded-codex.mts",
++    "test": "tsx scripts/test.mts",
+     "dev": "tsx scripts/dev.mts start",
+     "dev:install": "tsx scripts/dev.mts install",
+     "dev:web": "tsx scripts/dev.mts web",
+-    "dev:dump": "tsx scripts/dev.mts dump",
+     "dev:remove": "tsx scripts/dev.mts remove",
+-    "test": "vitest run",
+-    "test:watch": "vitest",
+-    "test:package": "pnpm run build && node --import tsx/esm scripts/verify-package.mts",
+-    "verify": "pnpm run check && pnpm run test && pnpm run test:package",
+-    "prepack": "pnpm run build"
++    "prepack": "tsx scripts/build.mts"
+   },
+   "dependencies": {
+     "@deepseek-ai/schemastery": "workspace:^",
+@@ -133,6 +129,7 @@
+     "@deepseek-ai/dsh-session": "workspace:^",
+     "@deepseek-ai/dsh-typert-generator": "workspace:^",
+     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
++    "@types/js-yaml": "^4.0.9",
+     "@types/node": "^22.20.0",
+     "@types/react": "~18.3.1",
+     "@types/react-dom": "~18.3.0",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index c8575b578a1d8bdf7364a35fba2739c231169a0b..403a99bd448774eb9f903588a9e24976cbdaa6c4 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -72,6 +72,9 @@ importers:
+       '@deepseek-ai/dsh-typert-protocol':
+         specifier: workspace:^
+         version: link:upstream/deepseek-harness/packages/typert/protocol
++      '@types/js-yaml':
++        specifier: ^4.0.9
++        version: 4.0.9
+       '@types/node':
+         specifier: ^22.20.0
+         version: 22.20.1
+diff --git a/scripts/build.mts b/scripts/build.mts
+index 779e3a92d1138f4bc141818cc93ce3fe3268c1b3..9a901a8453b764253b591a43fb47a0576aca51dd 100644
+--- a/scripts/build.mts
++++ b/scripts/build.mts
+@@ -17,44 +17,100 @@ import ts from 'typescript'
+ import { WorkspaceAnalyzer } from '../upstream/deepseek-harness/packages/typert/generator/src/analyzer.ts'
+ import { FaceModelEmitter, type ModelEmitResult } from '../upstream/deepseek-harness/packages/typert/generator/src/emitter.ts'
+ import { WorkspaceTypertGenerator } from '../upstream/deepseek-harness/packages/typert/generator/src/workspace.ts'
++import { REPOSITORY_ROOT, UPSTREAM_ROOT } from './lib/paths.mts'
++import { pnpm, run } from './lib/process.mts'
+ 
+-const ROOT = resolve(import.meta.dirname, '..')
+-const UPSTREAM = resolve(ROOT, 'upstream/deepseek-harness')
+-const EXPECTED_UPSTREAM = 'a66e4702047846cdaa10c66c9d3df3951f5ea70d'
++const ROOT = REPOSITORY_ROOT
++const UPSTREAM = UPSTREAM_ROOT
+ const MAX_CLIENT_RAW_BYTES = 16 * 1024 * 1024
+ const MAX_CLIENT_GZIP_BYTES = 4 * 1024 * 1024
+ const TEMP = resolve(ROOT, '.tmp')
+ const SHADOW_PACKAGE = resolve(UPSTREAM, 'packages/external/dsh-file-manager')
+ const TYPERT_HOST_CONFIG = resolve(TEMP, 'tsconfig.typert-host.json')
+ const CHECK_ONLY = process.argv.includes('--check')
++const UPSTREAM_ARTIFACTS = [
++  'apps/cli/lib/bin.js',
++  'apps/web/dist/index.html',
++  'vendor/schemastery/lib/index.mjs',
++  'packages/llm/llm/lib/typert.host.js',
++  'packages/interaction/commands/lib/typert.host.js',
++  'packages/goal/goal/lib/typert.host.js',
++  'packages/subagent/subagent/lib/typert.host.js',
++] as const
+ const UPSTREAM_REMOTE_OWNERS = [
++  '@deepseek-ai/dsh-agent-presets',
++  '@deepseek-ai/dsh-commands',
++  '@deepseek-ai/dsh-api-settings-controller',
++  '@deepseek-ai/dsh-goal',
++  '@deepseek-ai/dsh-llm',
++  '@deepseek-ai/dsh-cordis-host-runner',
++  '@deepseek-ai/dsh-host-plugin-inventory',
++  '@deepseek-ai/dsh-message-feedback',
++  '@deepseek-ai/dsh-session-reference',
++  '@deepseek-ai/dsh-subagent',
+   '@deepseek-ai/dsh-api-session-controller',
+   '@deepseek-ai/dsh-api-workspace-controller',
+ ] as const
+ 
+-function pnpm(args: readonly string[]): void {
+-  execFileSync('pnpm', ['--pm-on-fail=ignore', ...args], {
+-    cwd: ROOT,
+-    stdio: 'inherit',
++function git(cwd: string, args: readonly string[]): string {
++  return execFileSync('git', args, {
++    cwd,
++    encoding: 'utf8',
+     windowsHide: true,
+-  })
+-}
+-
+-function git(args: readonly string[]): string {
+-  return execFileSync('git', args, { cwd: UPSTREAM, encoding: 'utf8', windowsHide: true }).trim()
++  }).trim()
+ }
+ 
+-function verifyUpstream(): void {
+-  if (!existsSync(resolve(UPSTREAM, 'package.json'))) {
+-    throw new Error('DeepSeek Harness submodule is not initialized; run git submodule update --init --recursive')
++function expectedSubmoduleCommit(): string {
++  if (!existsSync(resolve(UPSTREAM_ROOT, '.git'))
++    || !existsSync(resolve(UPSTREAM_ROOT, 'package.json'))) {
++    throw new Error(
++      'DeepSeek Harness submodule is not initialized; run git submodule update --init --recursive',
++    )
+   }
+-  const actual = git(['rev-parse', 'HEAD'])
+-  if (actual !== EXPECTED_UPSTREAM) {
+-    throw new Error(`DeepSeek Harness is ${actual}; expected pinned commit ${EXPECTED_UPSTREAM}`)
++  const entry = git(REPOSITORY_ROOT, ['ls-files', '--stage', '--', 'upstream/deepseek-harness'])
++  const match = /^160000 ([0-9a-f]{40})\s/.exec(entry)
++  if (match === null) throw new Error('upstream/deepseek-harness is not recorded as a Git submodule')
++  const expected = match[1]!
++  const actual = git(UPSTREAM_ROOT, ['rev-parse', 'HEAD'])
++  if (actual !== expected) {
++    throw new Error(
++      `DeepSeek Harness is checked out at ${actual}; run git submodule update --init --recursive to use ${expected}`,
++    )
+   }
+-  if (git(['status', '--porcelain', '--untracked-files=no']) !== '') {
+-    throw new Error('DeepSeek Harness tracked files are modified; refusing a non-reproducible build')
++  return expected
++}
++
++async function buildUpstream(commit: string): Promise<void> {
++  const stampPath = resolve(REPOSITORY_ROOT, '.tmp/upstream-build.json')
++  const hasArtifacts = UPSTREAM_ARTIFACTS.every(path => existsSync(resolve(UPSTREAM_ROOT, path)))
++  const isDirty = git(UPSTREAM_ROOT, ['status', '--porcelain', '--untracked-files=no']).length > 0
++  let stampedCommit: string | undefined
++  if (existsSync(stampPath)) {
++    try {
++      const stamp = JSON.parse(readFileSync(stampPath, 'utf8')) as { commit?: unknown }
++      if (typeof stamp.commit === 'string') stampedCommit = stamp.commit
++    } catch {
++      // A damaged disposable stamp simply causes a clean upstream rebuild.
++    }
+   }
++  if (hasArtifacts && !isDirty && stampedCommit === commit) return
++
++  await pnpm(['install', '--frozen-lockfile'], {
++    cwd: UPSTREAM_ROOT,
++    env: { ...process.env, CI: 'true' },
++  })
++  await pnpm(['run', 'clean'], {
++    cwd: UPSTREAM_ROOT,
++    env: { ...process.env, CI: 'true' },
++  })
++  await pnpm(['run', 'build'], {
++    cwd: UPSTREAM_ROOT,
++    env: { ...process.env, CI: 'true' },
++  })
++  const missing = UPSTREAM_ARTIFACTS.filter(path => !existsSync(resolve(UPSTREAM_ROOT, path)))
++  if (missing.length > 0) throw new Error(`DeepSeek Harness build did not emit: ${missing.join(', ')}`)
++  mkdirSync(dirname(stampPath), { recursive: true })
++  writeFileSync(stampPath, `${JSON.stringify({ commit }, null, 2)}\n`, 'utf8')
+ }
+ 
+ function clean(): void {
+@@ -295,21 +351,48 @@ function verifyArtifacts(): void {
+   console.log(`dsh-file-manager: client.js ${(raw / 1024 / 1024).toFixed(2)} MiB raw, ${(gzip / 1024 / 1024).toFixed(2)} MiB gzip`)
+ }
+ 
+-verifyUpstream()
++if (!existsSync(resolve(REPOSITORY_ROOT, 'node_modules'))) {
++  throw new Error('dependencies are not installed; run pnpm install --frozen-lockfile first')
++}
++
++const upstreamCommit = expectedSubmoduleCommit()
++await buildUpstream(upstreamCommit)
+ clean()
++generateUpstreamRemoteContracts()
++await run(process.execPath, [
++  resolve(ROOT, 'node_modules/typescript/bin/tsc'),
++  '-b',
++  'tsconfig.host.json',
++], { cwd: REPOSITORY_ROOT })
+ materializeShadowPackage()
+ try {
+-  generateUpstreamRemoteContracts()
+-  pnpm(['exec', 'tsc', '-b', 'tsconfig.host.json'])
+   generateTypert()
+-  pnpm(['exec', 'tsc', '-b', 'tsconfig.client.json'])
+-  if (CHECK_ONLY) {
+-    console.log('dsh-file-manager: Host and Client typecheck passed')
+-  } else {
+-    await generateMonacoAssets()
+-    pnpm(['exec', 'tsdown', '--env.DSH_BUILD_FACE', 'client'])
+-    verifyArtifacts()
+-  }
+ } finally {
+   cleanupShadowPackage()
+ }
++await run(process.execPath, [
++  resolve(ROOT, 'node_modules/typescript/bin/tsc'),
++  '-b',
++  'tsconfig.client.json',
++], { cwd: REPOSITORY_ROOT })
++if (CHECK_ONLY) {
++  console.log('dsh-file-manager: Host and Client typecheck passed')
++} else {
++  await generateMonacoAssets()
++  // DSH's standard client bundler resolves plugin metadata from the upstream
++  // workspace, so keep the temporary manifest visible for the whole bundle.
++  // Invoke tsdown directly: asking pnpm to re-evaluate the workspace while the
++  // disposable package exists would trigger an unnecessary install.
++  materializeShadowPackage()
++  try {
++    await run(process.execPath, [
++      resolve(ROOT, 'node_modules/tsdown/dist/run.mjs'),
++      '--env.DSH_BUILD_FACE',
++      'client',
++    ], { cwd: REPOSITORY_ROOT })
++    verifyArtifacts()
++  } finally {
++    cleanupShadowPackage()
++  }
++}
++process.stdout.write('built DeepSeek Harness prerequisites and dsh-file-manager\n')
+diff --git a/scripts/dev.mts b/scripts/dev.mts
+index ae57d530cb8c1e00fb8de5d789de3d5919f32bda..b3a8669483d3db98fbd11d365283f87b1e9ff473 100644
+--- a/scripts/dev.mts
++++ b/scripts/dev.mts
+@@ -1,85 +1,45 @@
+-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
++import { existsSync, mkdirSync } from 'node:fs'
+ import { resolve } from 'node:path'
+ import { runDsh } from './lib/dsh.mts'
+-import {
+-  ensureDevelopmentLinks,
+-  hasDevelopmentEnvironment,
+-  installDevelopmentTarball,
+-  removeFileManager,
+-} from './lib/dev-profile.mts'
++import { ensureDevelopmentLink, installDevelopmentTarball } from './lib/dev-profile.mts'
+ import { packTarball } from './lib/package.mts'
+-import {
+-  DEVELOPMENT_DSH_HOME,
+-  EMBEDDED_CODEX_ROOT,
+-  EMBEDDED_DSH_BIN,
+-  REPOSITORY_ROOT,
+-} from './lib/paths.mts'
+-import { pnpm } from './lib/process.mts'
++import { DEVELOPMENT_DSH_HOME, REPOSITORY_ROOT, UPSTREAM_ROOT } from './lib/paths.mts'
++import { run } from './lib/process.mts'
+ 
+ const action = process.argv[2] ?? 'start'
+-if (action !== 'start' && action !== 'install' && action !== 'web'
+-  && action !== 'dump' && action !== 'remove') {
+-  throw new Error('usage: tsx scripts/dev.mts <start|install|web|dump|remove>')
+-}
+-
+-function assertEmbeddedCheckout(): void {
+-  const manifestPath = resolve(EMBEDDED_CODEX_ROOT, 'package.json')
+-  if (!existsSync(manifestPath)) {
+-    throw new Error(
+-      `dsh-embedded-codex was not found at ${EMBEDDED_CODEX_ROOT}; place both repositories side by side `
+-      + 'or set DSH_EMBEDDED_CODEX_ROOT',
+-    )
+-  }
+-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name?: unknown }
+-  if (manifest.name !== 'dsh-embedded-codex') {
+-    throw new Error(`${EMBEDDED_CODEX_ROOT} is not a dsh-embedded-codex checkout`)
+-  }
+-  if (!existsSync(resolve(EMBEDDED_CODEX_ROOT, 'node_modules'))) {
+-    throw new Error(`dependencies are missing in ${EMBEDDED_CODEX_ROOT}; run pnpm install --frozen-lockfile there first`)
+-  }
+-}
+-
+-async function buildDevelopmentStack(): Promise<void> {
+-  assertEmbeddedCheckout()
+-  process.stdout.write('building the pinned Embedded Codex DSH host\n')
+-  await pnpm(['run', 'build'], { cwd: EMBEDDED_CODEX_ROOT })
+-  process.stdout.write('building dsh-file-manager\n')
+-  await pnpm(['run', 'build'], { cwd: REPOSITORY_ROOT })
+-  if (!existsSync(EMBEDDED_DSH_BIN)) {
+-    throw new Error(`Embedded Codex build did not emit its DSH CLI at ${EMBEDDED_DSH_BIN}`)
+-  }
++if (action !== 'start' && action !== 'install' && action !== 'web' && action !== 'remove') {
++  throw new Error('usage: tsx scripts/dev.mts <start|install|web|remove>')
+ }
+ 
++const dshBin = resolve(UPSTREAM_ROOT, 'apps/cli/lib/bin.js')
+ const env = { ...process.env, DSH_HOME: DEVELOPMENT_DSH_HOME }
+ mkdirSync(DEVELOPMENT_DSH_HOME, { recursive: true })
+ 
++async function buildPlugin(): Promise<void> {
++  await run(process.execPath, [
++    resolve(REPOSITORY_ROOT, 'node_modules/tsx/dist/cli.mjs'),
++    resolve(REPOSITORY_ROOT, 'scripts/build.mts'),
++  ], { cwd: REPOSITORY_ROOT })
++}
++
+ if (action === 'start') {
+-  await buildDevelopmentStack()
+-  const linked = await ensureDevelopmentLinks(DEVELOPMENT_DSH_HOME, env)
++  await buildPlugin()
++  const linked = await ensureDevelopmentLink(DEVELOPMENT_DSH_HOME, env)
+   process.stdout.write(linked
+-    ? `linked Embedded Codex and File Manager into ${DEVELOPMENT_DSH_HOME}\n`
+-    : 'development links are current; skipped profile installation\n')
+-  process.stdout.write('starting Embedded Codex Web with Chat | File | 轨迹\n')
+-  await runDsh(['web'], env, REPOSITORY_ROOT)
++    ? `linked ${REPOSITORY_ROOT} into ${DEVELOPMENT_DSH_HOME}\n`
++    : 'development link is current; skipped plugin installation\n')
++  process.stdout.write('starting Web; open a Session and select File\n')
++  await runDsh(['web'], env)
+ } else if (action === 'install') {
+-  await buildDevelopmentStack()
++  await buildPlugin()
+   const tarball = await packTarball()
+   await installDevelopmentTarball(DEVELOPMENT_DSH_HOME, tarball, env)
+-  process.stdout.write(`installed packed File Manager ${tarball} beside linked Embedded Codex\n`)
++  process.stdout.write(`installed packed plugin ${tarball} into ${DEVELOPMENT_DSH_HOME}\n`)
+ } else {
+-  assertEmbeddedCheckout()
+-  if (!existsSync(EMBEDDED_DSH_BIN)) {
+-    throw new Error('Embedded Codex DSH is not built; run pnpm dev first')
+-  }
+-  if (action === 'web' || action === 'dump') {
+-    if (!hasDevelopmentEnvironment(DEVELOPMENT_DSH_HOME)) {
+-      throw new Error('the shared development profile is not ready; run pnpm dev or pnpm dev:install first')
+-    }
+-    await runDsh(action === 'web' ? ['web'] : ['--profile', 'web', '--dump-config'], env, REPOSITORY_ROOT)
++  if (!existsSync(dshBin)) throw new Error('DeepSeek Harness is not built; run pnpm build first')
++  if (action === 'web') {
++    await runDsh(['web'], env)
+   } else {
+-    const removed = await removeFileManager(DEVELOPMENT_DSH_HOME, env)
+-    process.stdout.write(removed
+-      ? 'removed File Manager; Embedded Codex remains installed\n'
+-      : 'File Manager is not installed in the Embedded Codex development profile\n')
++    await runDsh(['plugin', '--profile', 'web', 'remove', 'dsh-file-manager', '--config.offline=true'], env)
+   }
+ }
+diff --git a/scripts/embedded-codex.mts b/scripts/embedded-codex.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4907ce794683efb5db3f1525896a8c25b222b279
+--- /dev/null
++++ b/scripts/embedded-codex.mts
+@@ -0,0 +1,81 @@
++import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs'
++import { relative, resolve } from 'node:path'
++import { packTarball } from './lib/package.mts'
++import { REPOSITORY_ROOT } from './lib/paths.mts'
++import { run } from './lib/process.mts'
++
++const EMBEDDED_CODEX_ROOT = 'D:\\dsh-embedded-codex'
++const EMBEDDED_DSH_HOME = resolve(EMBEDDED_CODEX_ROOT, '.tmp/dsh-home')
++const EMBEDDED_DSH_BIN = resolve(
++  EMBEDDED_CODEX_ROOT,
++  'upstream/deepseek-harness/apps/cli/lib/bin.js',
++)
++const PROFILE_ROOT = resolve(EMBEDDED_DSH_HOME, 'profiles/web')
++const PROFILE_MANIFEST = resolve(PROFILE_ROOT, 'package.json')
++const PROFILE_MODULES = resolve(PROFILE_ROOT, 'node_modules')
++const INSTALLED_PLUGIN = resolve(PROFILE_ROOT, 'node_modules/dsh-file-manager')
++
++interface ProfileManifest {
++  readonly dependencies?: Readonly<Record<string, string>>
++}
++
++function comparablePath(path: string): string {
++  const normalized = realpathSync(path)
++  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
++}
++
++/** Remove only the reproducible dependency tree from Embedded Codex's temporary Web Profile. */
++function resetEmbeddedProfileModules(): void {
++  if (relative(PROFILE_ROOT, PROFILE_MODULES) !== 'node_modules') {
++    throw new Error(`refusing to rebuild unsafe Embedded Codex Profile path: ${PROFILE_MODULES}`)
++  }
++  try {
++    rmSync(PROFILE_MODULES, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
++  } catch (error: unknown) {
++    throw new Error(
++      `cannot rebuild ${PROFILE_MODULES}; stop the running Embedded Codex Web process and retry`,
++      { cause: error },
++    )
++  }
++}
++
++function verifyPackedInstallation(): void {
++  if (!existsSync(PROFILE_MANIFEST) || !existsSync(INSTALLED_PLUGIN)) {
++    throw new Error('Embedded Codex did not install dsh-file-manager into its Web Profile')
++  }
++  const manifest = JSON.parse(readFileSync(PROFILE_MANIFEST, 'utf8')) as ProfileManifest
++  const specifier = manifest.dependencies?.['dsh-file-manager']
++  if (specifier === undefined || specifier.startsWith('link:')) {
++    throw new Error('Embedded Codex still points at the source checkout instead of the packed plugin')
++  }
++  if (comparablePath(INSTALLED_PLUGIN) === comparablePath(REPOSITORY_ROOT)) {
++    throw new Error('Embedded Codex still exposes dsh-file-manager through a source link')
++  }
++}
++
++if (!existsSync(EMBEDDED_DSH_BIN)) {
++  throw new Error(
++    `Embedded Codex DSH CLI is not built at ${EMBEDDED_DSH_BIN}; run pnpm build in ${EMBEDDED_CODEX_ROOT} first`,
++  )
++}
++
++await run(process.execPath, [
++  resolve(REPOSITORY_ROOT, 'node_modules/tsx/dist/cli.mjs'),
++  resolve(REPOSITORY_ROOT, 'scripts/build.mts'),
++], { cwd: REPOSITORY_ROOT })
++const tarball = await packTarball()
++resetEmbeddedProfileModules()
++await run(process.execPath, [
++  EMBEDDED_DSH_BIN,
++  'plugin',
++  '--profile',
++  'web',
++  'add',
++  tarball,
++  '--config.prefer-offline=true',
++], {
++  cwd: REPOSITORY_ROOT,
++  env: { ...process.env, DSH_HOME: EMBEDDED_DSH_HOME },
++})
++verifyPackedInstallation()
++process.stdout.write(`installed packed File Manager ${tarball} into ${EMBEDDED_DSH_HOME}\n`)
+diff --git a/scripts/lib/dev-profile.mts b/scripts/lib/dev-profile.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d75a29b40a1f0d960f806df818f071f98c100ea4
+--- /dev/null
++++ b/scripts/lib/dev-profile.mts
+@@ -0,0 +1,97 @@
++import { existsSync, readFileSync, realpathSync, rmSync } from 'node:fs'
++import { isAbsolute, relative, resolve } from 'node:path'
++import { runDsh } from './dsh.mts'
++import { REPOSITORY_ROOT } from './paths.mts'
++
++const PLUGIN_NAME = 'dsh-file-manager'
++const TEMP_ROOT = resolve(REPOSITORY_ROOT, '.tmp')
++
++interface ProfileManifest {
++  readonly dependencies?: Readonly<Record<string, string>>
++}
++
++function comparablePath(path: string): string {
++  const normalized = resolve(path)
++  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
++}
++
++function profilePaths(home: string): {
++  readonly manifest: string
++  readonly modules: string
++  readonly plugin: string
++  readonly root: string
++} {
++  const resolvedHome = resolve(home)
++  const homeFromTemp = relative(TEMP_ROOT, resolvedHome)
++  if (homeFromTemp.length === 0 || homeFromTemp.startsWith('..') || isAbsolute(homeFromTemp)) {
++    throw new Error(`development Profile home must be a child of ${TEMP_ROOT}: ${resolvedHome}`)
++  }
++  const root = resolve(resolvedHome, 'profiles/web')
++  const modules = resolve(root, 'node_modules')
++  if (relative(root, modules) !== 'node_modules') {
++    throw new Error(`refusing to use unsafe development Profile modules path: ${modules}`)
++  }
++  return {
++    manifest: resolve(root, 'package.json'),
++    modules,
++    plugin: resolve(modules, PLUGIN_NAME),
++    root,
++  }
++}
++
++function linkedPath(specifier: string, profileRoot: string): string | undefined {
++  if (!specifier.startsWith('link:')) return undefined
++  const target = specifier.slice('link:'.length)
++  return target.length === 0 ? undefined : resolve(profileRoot, target)
++}
++
++/** Whether the Web Profile already points at this checkout and exposes its package link. */
++export function hasDevelopmentLink(home: string): boolean {
++  const paths = profilePaths(home)
++  if (!existsSync(paths.manifest) || !existsSync(paths.plugin)) return false
++  try {
++    const manifest = JSON.parse(readFileSync(paths.manifest, 'utf8')) as ProfileManifest
++    const specifier = manifest.dependencies?.[PLUGIN_NAME]
++    if (specifier === undefined) return false
++    const declared = linkedPath(specifier, paths.root)
++    if (declared === undefined
++      || comparablePath(declared) !== comparablePath(REPOSITORY_ROOT)) return false
++    return comparablePath(realpathSync(paths.plugin)) === comparablePath(realpathSync(REPOSITORY_ROOT))
++  } catch {
++    return false
++  }
++}
++
++/** Remove only the reproducible dependency tree of one repository-owned temporary Profile. */
++export function resetDevelopmentProfileModules(home: string): void {
++  const { modules } = profilePaths(home)
++  try {
++    rmSync(modules, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 })
++  } catch (error: unknown) {
++    throw new Error(
++      `cannot rebuild ${modules}; stop the running DSH Web process and retry`,
++      { cause: error },
++    )
++  }
++}
++
++/** Register this checkout once; later builds are visible through the stable link without pnpm. */
++export async function ensureDevelopmentLink(home: string, env: NodeJS.ProcessEnv): Promise<boolean> {
++  if (hasDevelopmentLink(home)) return false
++  resetDevelopmentProfileModules(home)
++  await runDsh(['plugin', '--profile', 'web', 'add', 'link:.', '--config.prefer-offline=true'], env)
++  if (!hasDevelopmentLink(home)) {
++    throw new Error('DSH reported success but did not create the expected development plugin link')
++  }
++  return true
++}
++
++/** Perform an explicit publication-faithful install after avoiding pnpm's hoisted reinstall bug. */
++export async function installDevelopmentTarball(
++  home: string,
++  tarball: string,
++  env: NodeJS.ProcessEnv,
++): Promise<void> {
++  resetDevelopmentProfileModules(home)
++  await runDsh(['plugin', '--profile', 'web', 'add', tarball, '--config.prefer-offline=true'], env)
++}
+diff --git a/scripts/lib/dsh.mts b/scripts/lib/dsh.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d17e9674db21f504239aeccc71f58df5bca518e7
+--- /dev/null
++++ b/scripts/lib/dsh.mts
+@@ -0,0 +1,27 @@
++import { resolve } from 'node:path'
++import { capture, run } from './process.mts'
++import { REPOSITORY_ROOT } from './paths.mts'
++
++const DSH_BIN = resolve(REPOSITORY_ROOT, 'upstream/deepseek-harness/apps/cli/lib/bin.js')
++
++function command(args: readonly string[]): readonly string[] {
++  return [DSH_BIN, ...args]
++}
++
++/** Run the pinned DSH CLI from its supported profile entrypoint. */
++export async function runDsh(
++  args: readonly string[],
++  env: NodeJS.ProcessEnv,
++  cwd = REPOSITORY_ROOT,
++): Promise<void> {
++  await run(process.execPath, command(args), { cwd, env })
++}
++
++/** Run the pinned DSH CLI and capture its stdout. */
++export async function captureDsh(
++  args: readonly string[],
++  env: NodeJS.ProcessEnv,
++  cwd = REPOSITORY_ROOT,
++): Promise<string> {
++  return await capture(process.execPath, command(args), { cwd, env })
++}
+diff --git a/scripts/lib/package.mts b/scripts/lib/package.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9582cd5b47eb8cac888b619d65e7d805c2b789dc
+--- /dev/null
++++ b/scripts/lib/package.mts
+@@ -0,0 +1,40 @@
++import { createHash } from 'node:crypto'
++import { copyFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
++import { resolve } from 'node:path'
++import { capture } from './process.mts'
++import { REPOSITORY_ROOT } from './paths.mts'
++
++interface PackageManifest {
++  readonly name: string
++  readonly version: string
++}
++
++/** Pack the current build under a content-addressed path and return it. */
++export async function packTarball(): Promise<string> {
++  const manifest = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, 'package.json'), 'utf8')) as PackageManifest
++  const output = resolve(REPOSITORY_ROOT, '.tmp/packs')
++  if (!output.startsWith(`${REPOSITORY_ROOT}\\`) && !output.startsWith(`${REPOSITORY_ROOT}/`)) {
++    throw new Error(`unsafe pack output: ${output}`)
++  }
++  mkdirSync(output, { recursive: true })
++  const tarball = resolve(output, `${manifest.name}-${manifest.version}.tgz`)
++  rmSync(tarball, { force: true })
++  const pnpmCli = process.env.npm_execpath
++  if (pnpmCli === undefined || pnpmCli.length === 0) {
++    throw new Error('packed smoke requires npm_execpath so pnpm can be launched without a command shell')
++  }
++  await capture(process.execPath, [
++    pnpmCli,
++    '--pm-on-fail=ignore',
++    'pack',
++    '--config.ignore-scripts=true',
++    '--pack-destination',
++    output,
++  ], {
++    cwd: REPOSITORY_ROOT,
++  })
++  const digest = createHash('sha256').update(readFileSync(tarball)).digest('hex').slice(0, 16)
++  const contentAddressedTarball = resolve(output, `${manifest.name}-${manifest.version}-${digest}.tgz`)
++  copyFileSync(tarball, contentAddressedTarball)
++  return contentAddressedTarball
++}
+diff --git a/scripts/lib/paths.mts b/scripts/lib/paths.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e68cd66d9ac8675ba69e2a27017dab59e85fd597
+--- /dev/null
++++ b/scripts/lib/paths.mts
+@@ -0,0 +1,9 @@
++import { fileURLToPath } from 'node:url'
++import { dirname, resolve } from 'node:path'
++
++/** Repository root derived without depending on the invoking cwd. */
++export const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
++/** Read-only pinned DeepSeek Harness checkout. */
++export const UPSTREAM_ROOT = resolve(REPOSITORY_ROOT, 'upstream/deepseek-harness')
++/** Isolated Harness home used by development and packed smokes. */
++export const DEVELOPMENT_DSH_HOME = resolve(REPOSITORY_ROOT, '.tmp/dsh-home')
+diff --git a/scripts/lib/process.mts b/scripts/lib/process.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9d169ecb4f541214a06d09ec1ffcba0c5192ecd2
+--- /dev/null
++++ b/scripts/lib/process.mts
+@@ -0,0 +1,69 @@
++import { spawn } from 'node:child_process'
++
++/** Inputs for one inherited-output subprocess. */
++export interface RunOptions {
++  readonly cwd: string
++  readonly env?: NodeJS.ProcessEnv
++}
++
++/**
++ * Run one command, await its exit, and reject on spawn or non-zero status.
++ * @param command - executable name or absolute path.
++ * @param args - literal argument vector.
++ * @param options - working directory and optional environment.
++ */
++export async function run(command: string, args: readonly string[], options: RunOptions): Promise<void> {
++  await new Promise<void>((resolve, reject) => {
++    const child = spawn(command, args, {
++      cwd: options.cwd,
++      env: options.env ?? process.env,
++      stdio: 'inherit',
++      shell: false,
++      windowsHide: true,
++    })
++    child.once('error', reject)
++    child.once('exit', (code, signal) => {
++      if (signal !== null) {
++        reject(new Error(`${command} ended by signal ${signal}`))
++      } else if (code !== 0) {
++        reject(new Error(`${command} exited with status ${String(code)}`))
++      } else {
++        resolve()
++      }
++    })
++  })
++}
++
++/** Run the repository-selected pnpm executable. */
++export async function pnpm(args: readonly string[], options: RunOptions): Promise<void> {
++  const cli = process.env.npm_execpath
++  if (cli === undefined || cli.length === 0) {
++    throw new Error('pnpm scripts require npm_execpath so pnpm can be launched without a command shell')
++  }
++  // This repository intentionally carries a large pinned workspace submodule.
++  // Do not let programmatic `pnpm exec` calls run pnpm's automatic dependency
++  // repair, which can otherwise purge node_modules while a dev server is live.
++  await run(process.execPath, [cli, '--pm-on-fail=ignore', ...args], options)
++}
++
++/** Capture stdout while forwarding stderr and rejecting non-zero exits. */
++export async function capture(command: string, args: readonly string[], options: RunOptions): Promise<string> {
++  return await new Promise<string>((resolve, reject) => {
++    const child = spawn(command, args, {
++      cwd: options.cwd,
++      env: options.env ?? process.env,
++      stdio: ['ignore', 'pipe', 'inherit'],
++      shell: false,
++      windowsHide: true,
++    })
++    let stdout = ''
++    child.stdout.setEncoding('utf8')
++    child.stdout.on('data', (chunk: string) => { stdout += chunk })
++    child.once('error', reject)
++    child.once('exit', (code, signal) => {
++      if (signal !== null) reject(new Error(`${command} ended by signal ${signal}`))
++      else if (code !== 0) reject(new Error(`${command} exited with status ${String(code)}`))
++      else resolve(stdout)
++    })
++  })
++}
+diff --git a/scripts/test.mts b/scripts/test.mts
+new file mode 100644
+index 0000000000000000000000000000000000000000..74830f380757e290e5d15e8db114cda0bd728fcf
+--- /dev/null
++++ b/scripts/test.mts
+@@ -0,0 +1,141 @@
++import { createHash } from 'node:crypto'
++import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
++import { dirname, extname, relative, resolve } from 'node:path'
++import { captureDsh, runDsh } from './lib/dsh.mts'
++import { ensureDevelopmentLink, hasDevelopmentLink } from './lib/dev-profile.mts'
++import { packTarball } from './lib/package.mts'
++import { REPOSITORY_ROOT, UPSTREAM_ROOT } from './lib/paths.mts'
++import { run } from './lib/process.mts'
++
++function markdownFiles(path: string): string[] {
++  return readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
++    if (['.git', '.pnpm-store', '.tmp', 'lib', 'node_modules', 'upstream'].includes(entry.name)) return []
++    const child = resolve(path, entry.name)
++    if (entry.isDirectory()) return markdownFiles(child)
++    return entry.isFile() && extname(entry.name) === '.md' ? [child] : []
++  })
++}
++
++function verifyMarkdown(): void {
++  for (const path of markdownFiles(REPOSITORY_ROOT)) {
++    const text = readFileSync(path, 'utf8')
++    if (!text.endsWith('\n')) throw new Error(`${relative(REPOSITORY_ROOT, path)} has no final newline`)
++    if (/ +$/m.test(text)) throw new Error(`${relative(REPOSITORY_ROOT, path)} has trailing whitespace`)
++    const fences = text.match(/^```/gm)?.length ?? 0
++    if (fences % 2 !== 0) throw new Error(`${relative(REPOSITORY_ROOT, path)} has an unclosed code fence`)
++    for (const match of text.matchAll(/\[[^\]]+\]\((?!https?:|#)(?<target>[^)#]+)(?:#[^)]+)?\)/g)) {
++      const target = match.groups?.target
++      if (target === undefined || target.startsWith('<')) continue
++      const decoded = decodeURIComponent(target)
++      if (!existsSync(resolve(dirname(path), decoded))) {
++        throw new Error(`${relative(REPOSITORY_ROOT, path)} links to missing ${target}`)
++      }
++    }
++  }
++}
++
++async function verifyLinkedDevelopment(): Promise<void> {
++  const home = resolve(REPOSITORY_ROOT, '.tmp/linked-smoke-home')
++  rmSync(home, { recursive: true, force: true })
++  mkdirSync(home, { recursive: true })
++  const env = { ...process.env, DSH_HOME: home }
++
++  try {
++    if (!await ensureDevelopmentLink(home, env)) {
++      throw new Error('first development-link setup unexpectedly reported an existing link')
++    }
++    if (!hasDevelopmentLink(home)) throw new Error('development link is not readable after setup')
++    if (await ensureDevelopmentLink(home, env)) {
++      throw new Error('unchanged development link invoked package installation again')
++    }
++
++    const composed = await captureDsh(['--profile', 'web', '--dump-config'], env)
++    if (!composed.includes('dsh-file-manager') || !composed.includes('file-manager')) {
++      throw new Error('linked development Profile did not compose the File Manager plugin')
++    }
++  } finally {
++    const manifestPath = resolve(home, 'profiles/web/package.json')
++    if (existsSync(manifestPath)
++      && readFileSync(manifestPath, 'utf8').includes('dsh-file-manager')) {
++      await runDsh(['plugin', '--profile', 'web', 'remove', 'dsh-file-manager', '--config.offline=true'], env)
++    }
++    rmSync(home, { recursive: true, force: true })
++  }
++}
++
++async function verifyPackedPlugin(): Promise<void> {
++  const home = resolve(REPOSITORY_ROOT, '.tmp/packed-smoke-home')
++  if (relative(REPOSITORY_ROOT, home).startsWith('..')) {
++    throw new Error(`unsafe packed-smoke home: ${home}`)
++  }
++  rmSync(home, { recursive: true, force: true })
++  mkdirSync(home, { recursive: true })
++  const env = { ...process.env, DSH_HOME: home }
++  const tarball = await packTarball()
++  const tarballDigest = createHash('sha256').update(readFileSync(tarball)).digest('hex').slice(0, 16)
++  if (!tarball.endsWith(`-${tarballDigest}.tgz`)) {
++    throw new Error('packed tarball path is not content-addressed; a local install could reuse stale contents')
++  }
++
++  try {
++    await runDsh(['plugin', '--profile', 'web', 'add', tarball, '--config.prefer-offline=true'], env)
++    const profileManifestPath = resolve(home, 'profiles/web/package.json')
++    if (!existsSync(profileManifestPath)) throw new Error('plugin install did not initialize the isolated Web profile')
++    const profile = JSON.parse(readFileSync(profileManifestPath, 'utf8')) as {
++      dsh?: { profile?: { bundles?: readonly string[] } }
++    }
++    if (profile.dsh?.profile?.bundles?.includes('dsh-file-manager') !== true) {
++      throw new Error('installed plugin was not added to the Web profile Bundle list')
++    }
++    const installedRoot = resolve(home, 'profiles/web/node_modules/dsh-file-manager')
++    for (const path of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml']) {
++      if (!existsSync(resolve(installedRoot, path))) {
++        throw new Error(`installed File Manager package is missing ${path}`)
++      }
++    }
++    if (existsSync(resolve(installedRoot, 'upstream'))) {
++      throw new Error('installed File Manager package contains development-only upstream sources')
++    }
++    const composed = await captureDsh(['--profile', 'web', '--dump-config'], env)
++    if (!composed.includes('dsh-file-manager') || !composed.includes('file-manager')) {
++      throw new Error('composed Web profile is missing the File Manager plugin')
++    }
++    await runDsh(['plugin', '--profile', 'web', 'remove', 'dsh-file-manager', '--config.offline=true'], env)
++    const restored = await captureDsh(['--profile', 'web', '--dump-config'], env)
++    if (restored.includes('dsh-file-manager')) {
++      throw new Error('plugin removal left its Bundle in the Web profile')
++    }
++  } finally {
++    try {
++      const manifestPath = resolve(home, 'profiles/web/package.json')
++      if (existsSync(manifestPath)
++        && readFileSync(manifestPath, 'utf8').includes('dsh-file-manager')) {
++        await runDsh(['plugin', '--profile', 'web', 'remove', 'dsh-file-manager', '--config.offline=true'], env)
++      }
++    } finally {
++      rmSync(home, { recursive: true, force: true })
++    }
++  }
++}
++
++await run(process.execPath, [
++  resolve(REPOSITORY_ROOT, 'node_modules/tsx/dist/cli.mjs'),
++  resolve(REPOSITORY_ROOT, 'scripts/build.mts'),
++], { cwd: REPOSITORY_ROOT })
++await run(process.execPath, [
++  resolve(REPOSITORY_ROOT, 'node_modules/vitest/vitest.mjs'),
++  'run',
++], { cwd: REPOSITORY_ROOT })
++await run(process.execPath, [
++  resolve(UPSTREAM_ROOT, 'node_modules/oxlint/bin/oxlint'),
++  '--deny-warnings',
++  resolve(REPOSITORY_ROOT, 'src'),
++  resolve(REPOSITORY_ROOT, 'scripts'),
++  resolve(REPOSITORY_ROOT, 'tests'),
++  resolve(REPOSITORY_ROOT, 'tsdown.config.ts'),
++  resolve(REPOSITORY_ROOT, 'vitest.config.ts'),
++], { cwd: UPSTREAM_ROOT })
++verifyMarkdown()
++await verifyLinkedDevelopment()
++await verifyPackedPlugin()
++process.stdout.write('passed build, tests, lint, documentation, and packed DSH plugin checks\n')
+diff --git a/scripts/verify-package.mts b/scripts/verify-package.mts
+deleted file mode 100644
+index 1f587b2e4813937e5e44b01334e45d5084ac47e6..0000000000000000000000000000000000000000
+--- a/scripts/verify-package.mts
++++ /dev/null
+@@ -1,107 +0,0 @@
+-/** Pack the production artifact and verify its install-facing contract. */
+-
+-import { execFileSync } from 'node:child_process'
+-import {
+-  mkdirSync,
+-  readFileSync,
+-  readdirSync,
+-  rmSync,
+-  statSync,
+-} from 'node:fs'
+-import { relative, resolve } from 'node:path'
+-
+-const ROOT = resolve(import.meta.dirname, '..')
+-const OUTPUT = resolve(ROOT, '.tmp/package-verification')
+-
+-function assertInsideRoot(path: string): void {
+-  const value = relative(ROOT, path)
+-  if (value === '' || value.startsWith('..')) {
+-    throw new Error(`refusing unsafe package verification path: ${path}`)
+-  }
+-}
+-
+-assertInsideRoot(OUTPUT)
+-rmSync(OUTPUT, { recursive: true, force: true })
+-mkdirSync(OUTPUT, { recursive: true })
+-
+-execFileSync('pnpm', [
+-  '--pm-on-fail=ignore',
+-  '--config.ignore-scripts=true',
+-  'pack',
+-  '--pack-destination', OUTPUT,
+-], {
+-  cwd: ROOT,
+-  stdio: 'inherit',
+-  windowsHide: true,
+-})
+-
+-const archives = readdirSync(OUTPUT).filter(name => name.endsWith('.tgz'))
+-if (archives.length !== 1) throw new Error(`expected one package archive, received ${archives.length}`)
+-const archive = resolve(OUTPUT, archives[0]!)
+-const entries = execFileSync('tar', ['-tzf', archive], { encoding: 'utf8' })
+-  .trim()
+-  .split('\n')
+-
+-const required = [
+-  'package/package.json',
+-  'package/README.md',
+-  'package/LICENSE',
+-  'package/THIRD_PARTY_NOTICES.md',
+-  'package/THIRD_PARTY_NOTICES.txt',
+-  'package/cordis.patch.yml',
+-  'package/lib/index.js',
+-  'package/lib/client.js',
+-  'package/lib/typert.host.js',
+-  'package/lib/typert.remote-client.js',
+-  'package/lib/types/index.d.ts',
+-  'package/lib/types/client/index.d.ts',
+-]
+-for (const path of required) {
+-  if (!entries.includes(path)) throw new Error(`packed archive is missing ${path}`)
+-}
+-
+-const forbidden = ['package/src/', 'package/upstream/', 'package/node_modules/', 'package/.tmp/']
+-for (const prefix of forbidden) {
+-  if (entries.some(entry => entry.startsWith(prefix))) {
+-    throw new Error(`packed archive unexpectedly contains ${prefix}`)
+-  }
+-}
+-if (entries.some(entry => /package\/lib\/.+-[A-Za-z0-9_-]{8,}\.js$/.test(entry))) {
+-  throw new Error('packed archive contains an unreferenced hashed runtime chunk')
+-}
+-
+-const packedManifest = JSON.parse(execFileSync(
+-  'tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' },
+-)) as {
+-  dsh?: { bundle?: { patch?: unknown } }
+-  dependencies?: Record<string, string>
+-  devDependencies?: Record<string, string>
+-}
+-if (packedManifest.dsh?.bundle?.patch !== './cordis.patch.yml') {
+-  throw new Error('packed plugin must declare dsh.bundle.patch as ./cordis.patch.yml')
+-}
+-const packedPatch = execFileSync(
+-  'tar', ['-xOf', archive, 'package/cordis.patch.yml'], { encoding: 'utf8' },
+-)
+-if (!packedPatch.includes('id: file-manager') || !packedPatch.includes('name: dsh-file-manager')) {
+-  throw new Error('packed bundle patch does not insert the File Manager row')
+-}
+-if (/^\s*disabled:\s*true\s*$/m.test(packedPatch)) {
+-  throw new Error('packed File Manager bundle unexpectedly disables a DSH provider')
+-}
+-if (packedManifest.dependencies?.['monaco-editor'] !== undefined) {
+-  throw new Error('Monaco must remain a build-only dependency after being bundled')
+-}
+-if (packedManifest.devDependencies?.['monaco-editor'] !== '0.56.0') {
+-  throw new Error('packed manifest does not pin the tested Monaco version')
+-}
+-
+-for (const file of ['lib/index.js', 'lib/client.js']) {
+-  execFileSync(process.execPath, ['--check', resolve(ROOT, file)], { stdio: 'inherit' })
+-}
+-
+-const size = statSync(archive).size
+-const currentManifest = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')) as { version: string }
+-console.log(
+-  `dsh-file-manager@${currentManifest.version}: package verified (${entries.length} files, ${(size / 1024 / 1024).toFixed(2)} MiB)`,
+-)
+diff --git a/src/client/MonacoEditor.tsx b/src/client/MonacoEditor.tsx
+index 055e30ecdb93213342af0bd8091bd37e572eca1e..f0c9c58392d9723fa30ca91900e7f361b162bbef 100644
+--- a/src/client/MonacoEditor.tsx
++++ b/src/client/MonacoEditor.tsx
+@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
+ import * as monaco from './monaco-runtime.ts'
+ import type { SessionId } from '@deepseek-ai/dsh-session/types'
+ import { languageForPath } from './language.ts'
++import { normalizeMonacoColor } from './monaco-theme.ts'
+ import css from './styles.module.css'
+ 
+ export interface MonacoEditorProps {
+@@ -30,7 +31,7 @@ interface LiveEditor {
+ /** Resolve a CSS token from the File view, with a Monaco-safe fallback. */
+ function token(element: HTMLElement, name: string, fallback: string): string {
+   const value = getComputedStyle(element).getPropertyValue(name).trim()
+-  return value === '' ? fallback : value
++  return normalizeMonacoColor(value === '' ? fallback : value)
+ }
+ 
+ /** Rebuild a Monaco theme from the currently resolved DSH CSS variables. */
+diff --git a/src/client/index.ts b/src/client/index.ts
+index f4a97d3523e73d26eda41cb1e5bffc081a3d3557..9550cd01341daea2c9c91fd759b4a07b396e5e85 100644
+--- a/src/client/index.ts
++++ b/src/client/index.ts
+@@ -29,9 +29,8 @@ export type {
+ /** Required services for the generated Remote, Session source, slot, locale, and theme. */
+ export const inject = ['remote', 'sessions', 'slots', 'uiSession', 'locale', 'theme']
+ 
+-/** Mount the File Manager namespace and register one order-5 conversation View. */
+-export async function apply(ctx: Context): Promise<() => Promise<void>> {
+-  const disposeRemote = await ctx.remote.$mount(fileManagerRemote)
++/** Register the File Manager UI after its generated Remote namespace is visible. */
++function registerUi(ctx: Context): void {
+   const theme = createSnapshotStore(ctx.theme.getTheme())
+   ctx.on('theme/change', snapshot => { theme.set(snapshot) })
+   ctx.effect(() => installMonacoAssets(), 'dsh-file-manager: Monaco assets')
+@@ -65,6 +64,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
+     for (const model of liveModels) model.dispose()
+     liveModels.clear()
+   }, 'dsh-file-manager: Session model collection')
++  ctx.on('connection/reset', () => {
++    for (const model of liveModels) void model.handleConnected()
++  })
+ 
+   ctx.uiSession.provide({
+     hooks: ['fileManager'],
+@@ -115,6 +117,29 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
+     },
+   }, FileView))
+ 
+-  return async () => { await disposeRemote() }
++}
++
++/** Mount the File Manager namespace and register one order-5 conversation View. */
++export async function apply(ctx: Context): Promise<() => Promise<void>> {
++  const disposeRemote = await ctx.remote.$mount(fileManagerRemote)
++  const ui = ctx.inject([
++    'sessions',
++    'remote.fileManager',
++    'slots',
++    'uiSession',
++    'locale',
++    'theme',
++  ], registerUi)
++  try {
++    await ui
++  } catch (error) {
++    await ui.dispose()
++    await disposeRemote()
++    throw error
++  }
++  return async () => {
++    await ui.dispose()
++    await disposeRemote()
++  }
+ }
+ 
+diff --git a/src/client/locales.ts b/src/client/locales.ts
+index f1848b7599daae4f19470bfe390edb790d3f6ac5..7ce6f8df81ce833e42e9bb9be9fc4bb920845dad 100644
+--- a/src/client/locales.ts
++++ b/src/client/locales.ts
+@@ -76,9 +76,18 @@ export function fileManagerErrorKey(code: string): FileManagerLocaleKey {
+   }
+ }
+ 
+-/** Render a stable domain error in the active locale. */
+-export function fileManagerErrorText(error: { readonly code: string }, t: FileManagerTranslate): string {
+-  return t(fileManagerErrorKey(error.code))
++/** Render a localized domain error and retain diagnostics for unknown transport failures. */
++export function fileManagerErrorText(
++  error: { readonly code: string; readonly message?: string },
++  t: FileManagerTranslate,
++): string {
++  const key = fileManagerErrorKey(error.code)
++  const summary = t(key)
++  if (key !== 'error.generic') return summary
++  const message = error.message?.trim()
++  return message === undefined || message === ''
++    ? `${summary} [${error.code}]`
++    : `${summary} [${error.code}] ${message}`
+ }
+ 
+ declare module '@deepseek-ai/dsh-client-ui-slots' {
+diff --git a/src/client/model.ts b/src/client/model.ts
+index dc14fb619bbd4ae026da4af601e02602902bd0c4..97361eb2d43cc03c71b2dc04ae99c01fa245a924 100644
+--- a/src/client/model.ts
++++ b/src/client/model.ts
+@@ -120,6 +120,14 @@ export class FileManagerSessionModel {
+     this.snapshot.set({ directories: {} })
+   }
+ 
++  /** Rebuild the root listing after the Connection establishes or reconnects. */
++  async handleConnected(): Promise<void> {
++    if (this.disposed) return
++    const showHidden = this.snapshot.getSnapshot().directories['']?.showHidden
++    this.resetDirectories()
++    await this.loadDirectory('', showHidden, true)
++  }
++
+   /** Read one file, superseding any earlier file selection. */
+   async readFile(path: string): Promise<FileManagerReadValue> {
+     this.ensureLive()
+@@ -184,9 +192,14 @@ export class FileManagerSessionModel {
+ 
+ /** Convert Remote and transport failures without retaining mutable error objects. */
+ export function clientError(error: unknown): FileManagerClientError {
+-  if (error instanceof Error) {
+-    const code = 'code' in error && typeof error.code === 'string' ? error.code : 'file-manager/io'
+-    return { code, message: error.message }
++  if (typeof error === 'object' && error !== null) {
++    const code = 'code' in error && typeof error.code === 'string'
++      ? error.code
++      : 'file-manager/io'
++    const message = 'message' in error && typeof error.message === 'string'
++      ? error.message
++      : String(error)
++    return { code, message }
+   }
+   return { code: 'file-manager/io', message: String(error) }
+ }
+diff --git a/src/client/monaco-theme.ts b/src/client/monaco-theme.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3aabbfdecb17ffc22fde50e5709a3eb4788919ca
+--- /dev/null
++++ b/src/client/monaco-theme.ts
+@@ -0,0 +1,6 @@
++/** Convert CSS shorthand hex colors into Monaco's required RRGGBB/RRGGBBAA form. */
++export function normalizeMonacoColor(value: string): string {
++  const shorthand = /^#([\da-f]{3}|[\da-f]{4})$/i.exec(value.trim())
++  if (shorthand === null) return value.trim()
++  return `#${[...shorthand[1]!].map(component => `${component}${component}`).join('')}`
++}
+diff --git a/tests/client-model.spec.ts b/tests/client-model.spec.ts
+index 7ca642caad7864657f2339e247c4adc0db8dd784..34941b5f0df801ece8a029337bc96c45a80996a0 100644
+--- a/tests/client-model.spec.ts
++++ b/tests/client-model.spec.ts
+@@ -86,6 +86,30 @@ describe('FileManagerSessionModel', () => {
+     expect(list).toHaveBeenCalledTimes(2)
+   })
+ 
++  it('reloads the root after the Connection becomes ready', async () => {
++    let calls = 0
++    const list = vi.fn(async (): Promise<RemoteResult<FileManagerListValue>> => {
++      calls += 1
++      if (calls === 1) {
++        return {
++          ok: false,
++          error: new RemoteError('file-manager/io', 'connection was not ready', { path: '' }),
++        }
++      }
++      return { ok: true, value: listValue('connected') }
++    })
++    const model = new FileManagerSessionModel(SessionId('reconnect'), { ...unusedRemote(), list })
++
++    await model.loadDirectory('')
++    expect(model.snapshot.getSnapshot().directories['']?.status).toBe('error')
++    await model.handleConnected()
++
++    expect(model.snapshot.getSnapshot().directories['']).toMatchObject({
++      status: 'ready',
++      entries: [{ name: 'connected' }],
++    })
++  })
++
+   it('cancels the previous file read and all work on dispose', async () => {
+     const reads: AbortSignal[] = []
+     const read = vi.fn((_request, requestSignal: AbortSignal) => {
+@@ -122,5 +146,8 @@ describe('FileManagerSessionModel', () => {
+     expect(clientError(new RemoteError('gateway/cancelled', 'cancelled', {}))).toEqual({
+       code: 'gateway/cancelled', message: 'cancelled',
+     })
++    expect(clientError({ code: 'file-manager/no-workspace', message: 'not ready' })).toEqual({
++      code: 'file-manager/no-workspace', message: 'not ready',
++    })
+   })
+ })
+diff --git a/tests/client-state.spec.ts b/tests/client-state.spec.ts
+index b48844c09a1bbcced87a5b83b979b0212cbda23b..3102f48332785240c688138c5bc1428512942b18 100644
+--- a/tests/client-state.spec.ts
++++ b/tests/client-state.spec.ts
+@@ -3,7 +3,12 @@ import type { editor } from 'monaco-editor'
+ import { flattenExplorerRows } from '../src/client/Explorer.tsx'
+ import { createFileManagerViewStore, isActiveFileDirty } from '../src/client/file-store.ts'
+ import { languageForPath, languageLabel } from '../src/client/language.ts'
+-import { fileManagerErrorKey } from '../src/client/locales.ts'
++import {
++  fileManagerErrorKey,
++  fileManagerErrorText,
++  type FileManagerTranslate,
++} from '../src/client/locales.ts'
++import { normalizeMonacoColor } from '../src/client/monaco-theme.ts'
+ import type { FileManagerModelSnapshot } from '../src/client/model.ts'
+ 
+ describe('File Manager view state', () => {
+@@ -131,9 +136,24 @@ describe('File Manager view state', () => {
+     expect(languageLabel('typescript')).toBe('TypeScript')
+   })
+ 
++  it('expands CSS shorthand colors for Monaco token themes', () => {
++    expect(normalizeMonacoColor('#fff')).toBe('#ffffff')
++    expect(normalizeMonacoColor('#0f08')).toBe('#00ff0088')
++    expect(normalizeMonacoColor('#1f2023')).toBe('#1f2023')
++    expect(normalizeMonacoColor('rgb(1, 2, 3)')).toBe('rgb(1, 2, 3)')
++  })
++
+   it('maps Host error codes to stable localized message keys', () => {
+     expect(fileManagerErrorKey('file-manager/stale-version')).toBe('error.stale')
+     expect(fileManagerErrorKey('file-manager/outside-workspace')).toBe('error.outsideWorkspace')
+     expect(fileManagerErrorKey('unknown')).toBe('error.generic')
+   })
++
++  it('shows diagnostics for an unknown client or transport failure', () => {
++    const t = ((key: string) => key) as FileManagerTranslate
++    expect(fileManagerErrorText({
++      code: 'gateway/internal',
++      message: 'client api: fileManager/list failed',
++    }, t)).toBe('error.generic [gateway/internal] client api: fileManager/list failed')
++  })
+ })
+diff --git a/tests/host-operations.spec.ts b/tests/host-operations.spec.ts
+index 37bd6e75b764fb3d0340d591a2b83edcf2f51991..0ca5d0806014557cbdb4acaefc96f48d65201eb1 100644
+--- a/tests/host-operations.spec.ts
++++ b/tests/host-operations.spec.ts
+@@ -81,16 +81,18 @@ describe('FileManagerOperations', () => {
+     writeFileSync(join(workspace, 'z.txt'), 'z')
+     writeFileSync(join(workspace, '.env'), 'secret')
+     writeFileSync(join(outside, 'outside.txt'), 'outside')
+-    symlinkSync(join(outside, 'outside.txt'), join(workspace, 'escape.txt'))
+-    symlinkSync(join(workspace, 'z.txt'), join(workspace, 'inside-link.txt'))
++    // Directory junctions exercise the same realpath boundary on Windows
++    // without requiring Developer Mode's file-symlink privilege.
++    symlinkSync(outside, join(workspace, 'escape'), 'junction')
++    symlinkSync(join(workspace, 'src'), join(workspace, 'inside-link'), 'junction')
+ 
+     const hidden = await operations().list({ sessionId, path: '' }, signal())
+-    expect(hidden.entries.map(entry => entry.name)).toEqual(['src', 'inside-link.txt', 'z.txt'])
+-    expect(hidden.entries.find(entry => entry.name === 'inside-link.txt')).toMatchObject({
+-      kind: 'file',
++    expect(hidden.entries.map(entry => entry.name)).toEqual(['inside-link', 'src', 'z.txt'])
++    expect(hidden.entries.find(entry => entry.name === 'inside-link')).toMatchObject({
++      kind: 'directory',
+       symlink: true,
+     })
+-    expect(hidden.entries.some(entry => entry.name === 'escape.txt')).toBe(false)
++    expect(hidden.entries.some(entry => entry.name === 'escape')).toBe(false)
+ 
+     const shown = await operations().list({ sessionId, path: '', showHidden: true }, signal())
+     expect(shown.entries.map(entry => entry.name)).toContain('.env')
+@@ -180,7 +182,7 @@ describe('FileManagerOperations', () => {
+   it('rejects stale saves, read-only deployments, and paths outside the workspace', async () => {
+     writeFileSync(join(workspace, 'note.txt'), 'one')
+     writeFileSync(join(outside, 'outside.txt'), 'outside')
+-    symlinkSync(join(outside, 'outside.txt'), join(workspace, 'escape.txt'))
++    symlinkSync(outside, join(workspace, 'escape'), 'junction')
+     const api = operations()
+     const opened = await api.read({ sessionId, path: 'note.txt' }, signal())
+     writeFileSync(join(workspace, 'note.txt'), 'changed elsewhere')
+@@ -197,7 +199,7 @@ describe('FileManagerOperations', () => {
+       content: 'mine',
+       expectedVersion: opened.version,
+     }, signal())).rejects.toMatchObject({ code: 'file-manager/read-only' })
+-    await expect(api.read({ sessionId, path: 'escape.txt' }, signal()))
++    await expect(api.read({ sessionId, path: 'escape/outside.txt' }, signal()))
+       .rejects.toMatchObject({ code: 'file-manager/outside-workspace' })
+   })
+ 
+diff --git a/tests/package-contract.spec.ts b/tests/package-contract.spec.ts
+index b4a5e65256a424be5242bb1a58cc82c09f9cd436..c97744f82e5e6fce0373c5c6b4346ced84308232 100644
+--- a/tests/package-contract.spec.ts
++++ b/tests/package-contract.spec.ts
+@@ -19,8 +19,56 @@ describe('package and DSH composition contract', () => {
+     expect(patch).not.toContain('disabled: true')
+   })
+ 
++  it('keeps documentation and development tooling independent of sibling repositories', () => {
++    const implementationPlan = readFileSync(
++      resolve(root, 'docs/dsh-file-manager-implementation-plan.md'),
++      'utf8',
++    )
++    const developmentScript = readFileSync(resolve(root, 'scripts/dev.mts'), 'utf8')
++    const buildScript = readFileSync(resolve(root, 'scripts/build.mts'), 'utf8')
++    const developmentProfile = readFileSync(resolve(root, 'scripts/lib/dev-profile.mts'), 'utf8')
++    const standaloneSurfaces = [
++      implementationPlan,
++      developmentScript,
++      buildScript,
++      developmentProfile,
++    ].join('\n')
++
++    expect(standaloneSurfaces).not.toContain(['dsh', 'embedded', 'codex'].join('-'))
++    expect(standaloneSurfaces).not.toContain("execFileSync('pnpm'")
++    expect(developmentScript).toContain('ensureDevelopmentLink')
++    expect(developmentScript).toContain('installDevelopmentTarball')
++    expect(developmentScript).toContain("await runDsh(['web'], env)")
++    expect(developmentProfile).toContain("'link:.'")
++  })
++
++  it('exposes the reference development commands and Embedded Codex integration', () => {
++    const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
++      scripts?: Record<string, string>
++    }
++    const embeddedIntegration = readFileSync(resolve(root, 'scripts/embedded-codex.mts'), 'utf8')
++    expect(manifest.scripts).toEqual({
++      build: 'tsx scripts/build.mts',
++      'build:embedded-codex': 'tsx scripts/embedded-codex.mts',
++      test: 'tsx scripts/test.mts',
++      dev: 'tsx scripts/dev.mts start',
++      'dev:install': 'tsx scripts/dev.mts install',
++      'dev:web': 'tsx scripts/dev.mts web',
++      'dev:remove': 'tsx scripts/dev.mts remove',
++      prepack: 'tsx scripts/build.mts',
++    })
++    expect(embeddedIntegration).toContain('packTarball()')
++    expect(embeddedIntegration).toContain('DSH_HOME: EMBEDDED_DSH_HOME')
++    expect(embeddedIntegration).not.toContain("'link:.'")
++    expect(embeddedIntegration).toContain('resetEmbeddedProfileModules()')
++    expect(embeddedIntegration).toContain('verifyPackedInstallation()')
++  })
++
+   it('registers File between Chat and Trajectory through conversation.view', () => {
+     const source = readFileSync(resolve(root, 'src/client/index.ts'), 'utf8')
++    expect(source).toContain("const disposeRemote = await ctx.remote.$mount(fileManagerRemote)")
++    expect(source).toContain("'remote.fileManager'")
++    expect(source).toContain('const ui = ctx.inject(')
+     expect(source).toContain("ctx.slots.inject('conversation.view'")
+     expect(source).toContain("id: 'file'")
+     expect(source).toContain('order: 5')
+diff --git a/tsdown.config.ts b/tsdown.config.ts
+index 771a8495028449ab58be4c1516272e1d7df23864..3df1b4c2babdab3f320fafe925f4ee139386b120 100644
+--- a/tsdown.config.ts
++++ b/tsdown.config.ts
+@@ -54,13 +54,13 @@ export default defineConfig((inlineConfig): UserConfig[] => {
+     return {
+       ...config,
+       alias: {
+-        ...(config.alias ?? {}),
++        ...config.alias,
+         'dsh-file-manager/remote': resolve('lib/typert.remote-client.js'),
+       },
+       minify: true,
+       plugins: [monacoPlugin(), ...(config.plugins ?? [])],
+       outputOptions: {
+-        ...(config.outputOptions ?? {}),
++        ...config.outputOptions,
+         // DSH fetches one dynamic-plugin artifact; every lazy Monaco module is
+         // folded into that entry rather than emitted as an unreachable chunk.
+         codeSplitting: false,
