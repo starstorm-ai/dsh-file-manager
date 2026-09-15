@@ -29,6 +29,7 @@
     { "path": "./upstream/deepseek-harness/packages/client/ui-renderer" },
     { "path": "./upstream/deepseek-harness/packages/client/ui-session" },
     { "path": "./upstream/deepseek-harness/packages/client/ui-conversation" },
+    { "path": "./upstream/deepseek-harness/packages/client/ui-primitives" },
     { "path": "./upstream/deepseek-harness/packages/client/ui-theme" }
   ]
 }

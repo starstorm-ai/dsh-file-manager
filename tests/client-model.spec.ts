@@ -110,7 +110,7 @@ describe('FileManagerSessionModel', () => {
     })
   })
 
-  it('cancels the previous file read and all work on dispose', async () => {
+  it('loads different tabs concurrently and cancels only a superseded or closed path', async () => {
     const reads: AbortSignal[] = []
     const read = vi.fn((_request, requestSignal: AbortSignal) => {
       reads.push(requestSignal)
@@ -121,13 +121,21 @@ describe('FileManagerSessionModel', () => {
       })
     })
     const model = new FileManagerSessionModel(SessionId('read'), { ...unusedRemote(), read })
-    const first = model.readFile('a.ts').catch(error => error)
-    const second = model.readFile('b.ts').catch(error => error)
+    const firstA = model.readFile('a.ts').catch(error => error)
+    const firstB = model.readFile('b.ts').catch(error => error)
+    expect(reads[0]?.aborted).toBe(false)
+    expect(reads[1]?.aborted).toBe(false)
+
+    const secondA = model.readFile('a.ts').catch(error => error)
     expect(reads[0]?.aborted).toBe(true)
-    model.dispose()
+    expect(reads[1]?.aborted).toBe(false)
+    model.cancelRead('b.ts')
     expect(reads[1]?.aborted).toBe(true)
-    expect((await first).name).toBe('AbortError')
-    expect((await second).name).toBe('AbortError')
+    model.dispose()
+    expect(reads[2]?.aborted).toBe(true)
+    expect((await firstA).name).toBe('AbortError')
+    expect((await firstB).name).toBe('AbortError')
+    expect((await secondA).name).toBe('AbortError')
     await expect(model.readFile('again.ts')).rejects.toMatchObject({ name: 'AbortError' })
   })
 

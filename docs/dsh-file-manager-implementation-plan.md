@@ -15,15 +15,15 @@
 - 保存必须携带读取时取得的版本令牌，文件被外部修改后拒绝静默覆盖。
 - Monaco、语言模块和 worker 随插件一起交付，不依赖 CDN。
 
-这套方案与 DSH 当前的扩展方式一致，也保留了后续加入多文件页签、搜索、创建和删除等能力的空间。
+这套方案与 DSH 当前的扩展方式一致，也保留了后续加入搜索、创建和删除等能力的空间。
 
 ## V1 范围
 
 ### 包含
 
 - 在会话标题栏增加 `File` tab，并按 Session 记住当前选中的顶层视图。
-- 左侧工作区文件树，目录按需展开，支持刷新和隐藏文件开关。
-- 右侧单一活动文件编辑器。
+- 左侧工作区文件树，目录按需展开；隐藏文件是否展示由 Host 配置决定。
+- 右侧活动文件编辑器和可同时保留多个缓冲区的文件 Tab。
 - 文本查看、编辑、撤销和重做。
 - 根据扩展名进行语法高亮，未知类型使用纯文本。
 - `Cmd+S` 或 `Ctrl+S` 保存。
@@ -34,14 +34,13 @@
 ### 延后
 
 - 新建、删除、重命名和移动文件或目录。
-- File 视图内部的多文件编辑页签。
 - 图片、PDF、音视频和其他二进制预览。
 - 全局搜索替换、快速打开和最近文件。
 - LSP、跳转定义、引用查找和代码补全增强。
 - Git diff、提交、历史与三方冲突合并。
 - Session 工作区之外的任意目录浏览。
 
-V1 保持单一活动文件，可以避免在顶层 `File` tab 内再引入一套复杂 tab 生命周期。Store 和 Monaco model URI 仍按可扩展方式设计，后续加入多文件不会改变 Host API。
+文件 Tab 的切换和关闭完全由 Client Store 管理，不改变 Host API；任一时刻只挂载当前 Tab 的 Monaco model，其余 Tab 在内存中保留缓冲区和 view state。
 
 ## 外部插件实现约束
 
@@ -97,17 +96,16 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 │  Chat                File                轨迹                             │
 │                      ━━━                                                 │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  workspace / src / client                         [显示隐藏] [刷新] [保存] │
+│ [工作区] [FileView.tsx ×] [index.ts ● ×]                         [保存] │
 ├───────────────────────┬──────────────────────────────────────────────────┤
-│ 文件资源管理器         │ FileView.tsx  ●                                  │
-│                       ├──────────────────────────────────────────────────┤
-│ ▾ src                 │                                                  │
+│ ▾ src                 │ FileView.tsx  ●                                  │
+│   TS index.ts         ├──────────────────────────────────────────────────┤
 │   ▾ client            │              Monaco Editor                       │
 │     ▸ components      │                                                  │
-│       FileView.tsx    │                                                  │
-│       index.ts        │                                                  │
+│     TS FileView.tsx   │                                                  │
+│     TS index.ts       │                                                  │
 │   ▸ host              │                                                  │
-│ package.json          │                                                  │
+│ PKG package.json      │                                                  │
 ├───────────────────────┴──────────────────────────────────────────────────┤
 │ 工作区根目录已锁定                         TypeScript  UTF-8  Ln 5, Col 7 │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -116,12 +114,13 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 ### 布局与行为
 
 - 资源树默认宽度建议为 `280px`，允许拖动，限制在 `220px` 到 `420px`。
-- 面包屑只显示 Session 根目录内的相对路径，不向浏览器暴露 Host 绝对根路径。
-- 目录首次展开时调用 `list`；刷新只使目标目录缓存失效，不递归扫描整个仓库。
-- 单击文本文件后调用 `read`，创建或替换 Monaco model。
-- 当前文件变脏时在文件名后显示圆点，并启用保存按钮。
-- 选择其他文件时，如果当前文件未保存，则提供“保存并打开”“放弃并打开”“取消”。
-- 切换 Chat、File、轨迹不会丢掉 File 的编辑缓冲区。
+- 文件栏与轨迹筛选栏采用相同的 32px 栏高、20px 按钮、间距、圆角和交互色。
+- Explorer 不显示冗余标题；目录复用 DSH Workspace 的开合文件夹图标与悬停箭头交互，文件按常见类型显示图标。
+- 目录首次展开时调用 `list`，Client 不提供手动刷新或隐藏文件开关。
+- 单击文本文件后打开新 Tab；已打开文件直接切换，不重复读取。
+- 文件变脏时在对应 Tab 显示圆点，并为活动 Tab 启用保存按钮。
+- 关闭未保存 Tab 时提供“保存并关闭”“放弃并关闭”“取消”。
+- 切换文件 Tab 或 Chat、File、轨迹不会丢掉已打开文件的编辑缓冲区。
 - 现有共享 Composer 继续可用；FileView 需要为底部 Composer 浮层预留空间。
 - 窄屏下资源树变成可开合侧栏，优先保证编辑器宽度。
 
@@ -129,7 +128,7 @@ ctx.slots.inject('conversation.view', () => ctx.slots.register({
 
 - 资源树使用 `role="tree"`、`treeitem` 和正确的 `aria-expanded`。
 - 支持方向键、Enter、Home、End 和左右键展开收起。
-- 保存、刷新、隐藏文件等图标按钮均提供可本地化的可访问名称。
+- 工作区、文件 Tab、关闭和保存按钮均提供可本地化的可访问名称。
 - 视图重新激活后恢复到上次聚焦的树节点或编辑位置。
 
 ## 系统架构
@@ -316,21 +315,25 @@ interface FileSessionSnapshot {
   selectedPath?: string
 
   activePath?: string
-  activeVersion?: string
-  activeSize?: number
-  editorPhase: 'empty' | 'loading' | 'clean' | 'dirty' | 'saving' | 'conflict' | 'error'
+  openFiles: Array<{
+    path: string
+    content: string
+    savedContent: string
+    version?: string
+    editorPhase: 'loading' | 'clean' | 'dirty' | 'saving' | 'conflict' | 'error'
+    viewState?: ICodeEditorViewState
+  }>
 
   treeWidth: number
-  showHidden: boolean
 }
 ```
 
 关键规则：
 
 - 目录缓存以规范化相对路径为 key。
-- 每次文件或目录请求都持有 `AbortController`；新请求会取消旧请求。
-- 过期响应带 generation id，不能覆盖当前选择。
-- 顶层 tab 切换不销毁 store；Monaco model 可安全重建，并恢复缓冲区、光标、选区与滚动位置。
+- 每次文件或目录请求都持有 `AbortController`；同一路径的新请求会取消旧请求，不同文件可以并发读取。
+- 过期响应带 request 或 generation id，不能覆盖对应 Tab 的新状态。
+- 文件 Tab 和顶层 tab 切换都不销毁 store；Monaco model 可安全重建，并恢复各文件的缓冲区、光标、选区与滚动位置。
 - Session 删除或插件热卸载时，统一取消请求并释放全部资源。
 
 ## Monaco 集成
@@ -344,7 +347,7 @@ interface FileSessionSnapshot {
   dsh-file:///<encoded-session-id>/<encoded-relative-path>
   ```
 
-- V1 同一 Session 只保留一个活动 model；切换文件前完成脏状态决策。
+- 同一 Session 只挂载活动 Tab 的 Monaco model；切换时保存 view state，关闭脏 Tab 时完成保存或放弃决策。
 - 使用 `ResizeObserver` 调用 `editor.layout()`；视图重新激活后重新测量。
 - 组件卸载时保存 view state 并 dispose editor/model；Session binding 销毁时取消目录、读取与写入请求。
 
@@ -391,7 +394,7 @@ DSH Client Modules 以插件的 `lib/client.js` 作为页面资产参与组合�
 | --- | ---: | --- |
 | `maxFileBytes` | `2 MiB` | 限制读取和保存内容，Host 强制执行 |
 | `maxEntriesPerDirectory` | `2000` | 限制单次目录结果，超出时返回 `truncated` |
-| `showHiddenByDefault` | `false` | 默认隐藏点文件，用户可切换 |
+| `showHiddenByDefault` | `false` | 是否由 Host 返回点文件，Client 不提供临时切换 |
 | `editable` | `true` | 部署可切换为只读查看模式 |
 
 ## 工程结构
@@ -487,7 +490,7 @@ Client feature 之间只通过服务边界协作；需要类型时使用 type-on
 
 - 注册 `conversation.view`，确认顺序为 `Chat | File | 轨迹`。
 - 建立每 Session store。
-- 实现资源树、面包屑、刷新、隐藏文件、空状态和错误状态。
+- 实现资源树、轨迹筛选风格文件栏、多文件 Tab、空状态和错误状态。
 - 验证顶层 tab 与 Session 切换后的状态恢复。
 
 交付结果：`order: 5` 的 File tab、懒加载资源树、错误状态与 Session 状态恢复已实现。
@@ -516,8 +519,8 @@ Client feature 之间只通过服务边界协作；需要类型时使用 type-on
 | 层级 | 必须覆盖 | 通过标准 |
 | --- | --- | --- |
 | Host 单元 | 绝对路径、`..`、symlink 逃逸、二进制、超限、取消、stale save | 根外内容从未返回或写入，错误码稳定 |
-| Client Store | 懒加载、请求抢占、dirty 保留、Session 隔离、冲突与 reload | 过期响应不覆盖当前状态 |
-| Client | slot 注册、tab 顺序、请求抢占、dirty、冲突、状态恢复、dispose | 过期响应不覆盖当前状态，资源可释放 |
+| Client Store | 懒加载、并发文件 Tab、请求抢占、dirty 保留、Session 隔离、冲突与 reload | 过期响应不覆盖对应 Tab 的当前状态 |
+| Client | slot 注册、tab 顺序、多文件切换与关闭、dirty、冲突、状态恢复、dispose | 过期响应不覆盖当前状态，资源可释放 |
 | 契约 | 加法型 Bundle patch、Session 寻址和 Host 权威根目录 | manifest 与源码契约稳定 |
 | 打包 | 单一 `client.js`、离线 worker、无本机绝对路径、pack 白名单 | 发布归档不存在缺失或隐藏 runtime chunk |
 | 产品验收 | 目标产品的真实 Loader、1024/1440、明暗主题 | 加入普通 row 后完成一次浏览、编辑、冲突和视觉检查 |
@@ -526,6 +529,7 @@ Client feature 之间只通过服务边界协作；需要类型时使用 type-on
 
 - 会话标题栏显示 Chat、File、轨迹，File 的选中状态按 Session 恢复。
 - 用户可展开目录、打开常见文本文件并获得正确高亮。
+- 用户可同时打开、切换和关闭多个文件 Tab，关闭脏 Tab 时不会静默丢失修改。
 - 用户可编辑并使用 `Cmd+S` 或 `Ctrl+S` 保存。
 - 外部修改不会被静默覆盖。
 - 二进制、超限、权限和路径错误都有可理解的 UI。
@@ -538,11 +542,11 @@ Client feature 之间只通过服务边界协作；需要类型时使用 type-on
 | 决策 | 当前建议 | 调整影响 |
 | --- | --- | --- |
 | File tab 位置 | Chat 与轨迹之间，`order: 5` | 其他位置只需调整 order |
-| 活动编辑器 | V1 单一活动文件 | 多文件页签会增加 model、关闭确认和恢复逻辑 |
+| 活动编辑器 | 多文件缓冲区、单个活动 Monaco model | 限制同时挂载的 model 可控制内存并保留快速切换 |
 | 写能力 | V1 只编辑既有文本文件 | 新建、删除和重命名需要额外权限、确认与 fs 能力 |
 | 工作区边界 | 严格等于 Session `cwd` | 允许上级目录会改变安全模型，不建议 |
 | 文件上限 | 默认 `2 MiB`，可配置 | 提高会增加传输、内存和 Monaco 响应风险 |
 | 标签文案 | 中文“文件”，英文“File” | locale 可调整，不影响稳定 id `file` |
 
-这些决策已经落实到实现与测试中。后续扩展多文件页签或创建、删除、重命名时，需先扩展
+这些决策已经落实到实现与测试中。后续扩展创建、删除、重命名时，需先扩展
 权限和冲突模型，不应复用当前只替换既有文件的写入口。

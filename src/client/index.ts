@@ -87,12 +87,7 @@ function registerUi(ctx: Context): void {
       const model = modelForSession(sessionId)
       return {
         hooks: { theme },
-        loadDirectory: (path, showHidden, force) => model.loadDirectory(path, showHidden, force),
-        reloadDirectories: async (paths, showHidden) => {
-          model.resetDirectories()
-          const unique = new Set(['', ...paths])
-          await Promise.all([...unique].map(path => model.loadDirectory(path, showHidden, true)))
-        },
+        loadDirectory: path => model.loadDirectory(path),
         openFile: (path) => {
           const currentRequest = ++requestId
           actions.startOpen(path, currentRequest)
@@ -101,9 +96,13 @@ function registerUi(ctx: Context): void {
             error => { actions.failOpen(currentRequest, clientError(error)) },
           )
         },
+        closeFile: (path) => {
+          model.cancelRead(path)
+          actions.closeFile(path)
+        },
         saveFile: async (path, content, expectedVersion) => {
           const currentRequest = ++requestId
-          actions.startSave(currentRequest)
+          actions.startSave(path, currentRequest)
           try {
             const value = await model.writeFile(path, content, expectedVersion)
             actions.resolveSave(currentRequest, value.version, value.size, content)

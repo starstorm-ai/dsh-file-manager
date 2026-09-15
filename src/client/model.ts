@@ -54,7 +54,7 @@ export class FileManagerSessionModel {
   readonly snapshot: SnapshotStore<FileManagerModelSnapshot> = createSnapshotStore({ directories: {} })
 
   private readonly directoryRequests = new Map<string, { controller: AbortController; generation: number }>()
-  private readRequest: AbortController | undefined
+  private readonly readRequests = new Map<string, AbortController>()
   private readonly writeRequests = new Set<AbortController>()
   private generation = 0
   private disposed = false
@@ -128,19 +128,25 @@ export class FileManagerSessionModel {
     await this.loadDirectory('', showHidden, true)
   }
 
-  /** Read one file, superseding any earlier file selection. */
+  /** Read one file while allowing different file tabs to load concurrently. */
   async readFile(path: string): Promise<FileManagerReadValue> {
     this.ensureLive()
-    this.readRequest?.abort()
+    this.readRequests.get(path)?.abort()
     const controller = new AbortController()
-    this.readRequest = controller
+    this.readRequests.set(path, controller)
     try {
       const result = await this.remote.read({ sessionId: this.sessionId, path }, controller.signal)
       if (!result.ok) throw result.error
       return result.value
     } finally {
-      if (this.readRequest === controller) this.readRequest = undefined
+      if (this.readRequests.get(path) === controller) this.readRequests.delete(path)
     }
+  }
+
+  /** Cancel a pending read when its file tab closes. */
+  cancelRead(path: string): void {
+    this.readRequests.get(path)?.abort()
+    this.readRequests.delete(path)
   }
 
   /** Save one guarded editor snapshot. */
@@ -169,8 +175,8 @@ export class FileManagerSessionModel {
     if (this.disposed) return
     this.disposed = true
     this.resetDirectories()
-    this.readRequest?.abort()
-    this.readRequest = undefined
+    for (const request of this.readRequests.values()) request.abort()
+    this.readRequests.clear()
     for (const request of this.writeRequests) request.abort()
     this.writeRequests.clear()
   }

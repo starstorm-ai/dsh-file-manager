@@ -1,7 +1,13 @@
 /** Accessible flattened projection of the lazy directory cache. */
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  IconFolderClose16,
+  IconFolderOpen16,
+  IconTriangleRightFill14,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { FileManagerEntry } from '../types.ts'
+import { FileTypeIcon } from './FileTypeIcon.tsx'
 import type { FileManagerDirectoryState, FileManagerModelSnapshot } from './model.ts'
 import { fileManagerErrorText, type FileManagerTranslate } from './locales.ts'
 import css from './styles.module.css'
@@ -16,9 +22,8 @@ export interface ExplorerProps {
   readonly snapshot: FileManagerModelSnapshot
   readonly expandedPaths: readonly string[]
   readonly selectedPath: string | null
-  readonly showHidden: boolean | undefined
   readonly t: FileManagerTranslate
-  readonly loadDirectory: (path: string, showHidden?: boolean, force?: boolean) => Promise<void>
+  readonly loadDirectory: (path: string) => Promise<void>
   readonly setExpanded: (path: string, expanded: boolean) => void
   readonly selectFile: (path: string) => void
 }
@@ -49,7 +54,7 @@ function parentPath(path: string): string {
 
 /** Root-level tree with WAI-ARIA keyboard movement and lazy directory loads. */
 export function Explorer({
-  snapshot, expandedPaths, selectedPath, showHidden, t,
+  snapshot, expandedPaths, selectedPath, t,
   loadDirectory, setExpanded, selectFile,
 }: ExplorerProps) {
   const treeRef = useRef<HTMLDivElement>(null)
@@ -66,13 +71,13 @@ export function Explorer({
       ? selectedPath
       : rows[0]?.entry.path
 
-  useEffect(() => { void loadDirectory('', showHidden) }, [loadDirectory, showHidden])
+  useEffect(() => { void loadDirectory('') }, [loadDirectory])
 
   const toggle = (entry: FileManagerEntry, next?: boolean): void => {
     if (entry.kind !== 'directory') return
     const open = next ?? !expanded.has(entry.path)
     setExpanded(entry.path, open)
-    if (open) void loadDirectory(entry.path, showHidden)
+    if (open) void loadDirectory(entry.path)
   }
 
   const activate = (entry: FileManagerEntry): void => {
@@ -145,11 +150,13 @@ export function Explorer({
   }
 
   return (
-    <div ref={treeRef} className={css.tree} role="tree" aria-label={t('explorer.title')}>
+    <div ref={treeRef} className={css.tree} role="tree" aria-label={t('explorer.root')}>
       {rows.map((row, index) => {
         const { entry } = row
         const isDirectory = entry.kind === 'directory'
         const isExpanded = isDirectory && expanded.has(entry.path)
+        const containsSelected = isExpanded && selectedPath !== null
+          && selectedPath.startsWith(`${entry.path}/`)
         const directoryState = isExpanded ? snapshot.directories[entry.path] : undefined
         return (
           <div key={entry.path}>
@@ -162,6 +169,7 @@ export function Explorer({
               aria-level={row.depth + 1}
               aria-selected={selectedPath === entry.path}
               aria-expanded={isDirectory ? isExpanded : undefined}
+              data-contains-selected={containsSelected || undefined}
               tabIndex={entry.path === tabStopPath ? 0 : -1}
               className={css.treeRow}
               style={{ paddingInlineStart: 10 + row.depth * 16 }}
@@ -170,12 +178,26 @@ export function Explorer({
               onFocus={() => { setFocusedPath(entry.path) }}
               onKeyDown={event => { onKeyDown(event, row, index) }}
             >
-              <span aria-hidden className={css.chevron}>
-                {isDirectory ? (isExpanded ? '⌄' : '›') : ''}
-              </span>
-              <span aria-hidden className={css.fileIcon}>
-                {isDirectory ? '▣' : entry.kind === 'file' ? '·' : '◇'}
-              </span>
+              {isDirectory
+                ? (
+                  <span
+                    aria-hidden="true"
+                    className={css.treeLeading}
+                    data-directory-state={isExpanded ? 'open' : 'closed'}
+                  >
+                    <span className={css.treeFolder}>
+                      {isExpanded ? <IconFolderOpen16 /> : <IconFolderClose16 />}
+                    </span>
+                    <span className={css.treeChevron}>
+                      <IconTriangleRightFill14
+                        className={isExpanded
+                          ? `${css.treeArrow} ${css.treeArrowOpen}`
+                          : css.treeArrow}
+                      />
+                    </span>
+                  </span>
+                )
+                : <FileTypeIcon path={entry.path} />}
               <span className={css.entryName}>{entry.name}</span>
               {entry.symlink && <span aria-hidden className={css.symlink}>↗</span>}
             </button>

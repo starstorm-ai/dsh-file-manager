@@ -1,4 +1,4 @@
-/** Complete File conversation view: toolbar, explorer, editor, status, and conflict UI. */
+/** Complete File conversation view: tab toolbar, explorer, editor, status, and conflict UI. */
 
 import {
   useCallback, useEffect, useId, useMemo, useRef, useState,
@@ -11,9 +11,10 @@ import type { ThemeSnapshot } from '@deepseek-ai/dsh-client-ui-theme/client'
 import { Explorer } from './Explorer.tsx'
 import {
   createFileManagerViewStore,
-  isActiveFileDirty,
-  type FileManagerActiveFile,
+  isFileDirty,
+  type FileManagerOpenFile,
 } from './file-store.ts'
+import { FileToolbar } from './FileToolbar.tsx'
 import { languageForPath, languageLabel } from './language.ts'
 import type { FileManagerClientError } from './model.ts'
 import { MonacoEditor } from './MonacoEditor.tsx'
@@ -25,9 +26,9 @@ type FileManagerViewStore = ReturnType<typeof createFileManagerViewStore>
 /** Session-specific operations and global presentation source bound at registration. */
 export interface FileManagerViewInjected {
   readonly hooks: { readonly theme: SnapshotStore<ThemeSnapshot> }
-  readonly loadDirectory: (path: string, showHidden?: boolean, force?: boolean) => Promise<void>
-  readonly reloadDirectories: (paths: readonly string[], showHidden?: boolean) => Promise<void>
+  readonly loadDirectory: (path: string) => Promise<void>
   readonly openFile: (path: string) => void
+  readonly closeFile: (path: string) => void
   readonly saveFile: (path: string, content: string, expectedVersion: string) => Promise<boolean>
 }
 
@@ -44,37 +45,37 @@ function basename(path: string): string {
 export function FileView({
   sessionId, viewRequest, completeViewRequest,
   useFileManager, useTheme, useStore, actions,
-  loadDirectory, reloadDirectories, openFile, saveFile, t,
+  loadDirectory, openFile, closeFile, saveFile, t,
 }: FileManagerViewProps) {
   const model = useFileManager(value => value)
   const theme = useTheme(value => value)
   const expandedPaths = useStore(state => state.expandedPaths)
   const selectedPath = useStore(state => state.selectedPath)
-  const showHidden = useStore(state => state.showHidden)
   const treeWidth = useStore(state => state.treeWidth)
   const explorerVisible = useStore(state => state.explorerVisible)
-  const active = useStore(state => state.activeFile)
-  const dirty = isActiveFileDirty(active)
-  const [pendingPath, setPendingPath] = useState<string | null>(null)
+  const activePath = useStore(state => state.activePath)
+  const openFiles = useStore(state => state.openFiles)
+  const active = useMemo(
+    () => openFiles.find(file => file.path === activePath) ?? null,
+    [activePath, openFiles],
+  )
+  const [requestedClosePath, setRequestedClosePath] = useState<string | null>(null)
+  const requestedClose = useMemo(
+    () => openFiles.find(file => file.path === requestedClosePath) ?? null,
+    [openFiles, requestedClosePath],
+  )
+  const dirty = isFileDirty(active)
+  const hasDirtyFiles = openFiles.some(isFileDirty)
   const [cursor, setCursor] = useState({ line: 1, column: 1 })
   const resizeCleanup = useRef<(() => void) | null>(null)
 
-  const root = model.directories['']
-  useEffect(() => {
-    if (showHidden === null && root?.status === 'ready') actions.setShowHidden(root.showHidden)
-  }, [actions, root, showHidden])
-
-  const openNow = useCallback((path: string): void => {
-    setPendingPath(null)
-    setCursor({ line: 1, column: 1 })
-    openFile(path)
-  }, [openFile])
-
   const requestOpen = useCallback((path: string): void => {
-    if (active?.path === path && active.error === undefined) return
-    if (isActiveFileDirty(active)) setPendingPath(path)
-    else openNow(path)
-  }, [active, openNow])
+    if (openFiles.some(file => file.path === path)) {
+      actions.activateFile(path)
+      return
+    }
+    openFile(path)
+  }, [actions, openFile, openFiles])
 
   useEffect(() => {
     if (viewRequest?.view !== 'file') return
@@ -83,29 +84,35 @@ export function FileView({
   }, [completeViewRequest, requestOpen, viewRequest])
 
   useEffect(() => {
-    if (!dirty) return
+    if (!hasDirtyFiles) return
     const beforeUnload = (event: BeforeUnloadEvent): void => { event.preventDefault() }
     window.addEventListener('beforeunload', beforeUnload)
     return () => { window.removeEventListener('beforeunload', beforeUnload) }
-  }, [dirty])
+  }, [hasDirtyFiles])
 
+  useEffect(() => { setCursor({ line: 1, column: 1 }) }, [activePath])
   useEffect(() => () => { resizeCleanup.current?.() }, [])
 
+  const save = useCallback(async (file: FileManagerOpenFile): Promise<boolean> => {
+    if (file.loading || file.saving || file.version === undefined
+      || !file.editable || !isFileDirty(file)) return false
+    return saveFile(file.path, file.content, file.version)
+  }, [saveFile])
+
   const saveCurrent = useCallback(async (): Promise<boolean> => {
-    if (active === null || active.loading || active.saving || active.version === undefined
-      || !active.editable || !isActiveFileDirty(active)) return false
-    return saveFile(active.path, active.content, active.version)
-  }, [active, saveFile])
+    if (active === null) return false
+    return save(active)
+  }, [active, save])
 
-  const refreshTree = useCallback((): void => {
-    void reloadDirectories(expandedPaths, showHidden ?? undefined)
-  }, [expandedPaths, reloadDirectories, showHidden])
-
-  const toggleHidden = (): void => {
-    const next = !(showHidden ?? false)
-    actions.setShowHidden(next)
-    void reloadDirectories(expandedPaths, next)
-  }
+  const requestClose = useCallback((path: string): void => {
+    const file = openFiles.find(candidate => candidate.path === path)
+    if (file === undefined || file.saving) return
+    if (isFileDirty(file)) {
+      setRequestedClosePath(path)
+      return
+    }
+    closeFile(path)
+  }, [closeFile, openFiles])
 
   const beginResize = (event: ReactPointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
@@ -126,63 +133,29 @@ export function FileView({
   }
 
   const language = active === null ? 'plaintext' : languageForPath(active.path)
-  const breadcrumb = useMemo(() => active?.path.split('/') ?? [], [active?.path])
 
   return (
     <div className={css.root} data-conversation-composer-overlay="">
-      <header className={css.toolbar} aria-label={t('toolbar.aria')}>
-        <button
-          type="button"
-          className={css.iconButton}
-          aria-label={explorerVisible ? t('explorer.hide') : t('explorer.show')}
-          title={explorerVisible ? t('explorer.hide') : t('explorer.show')}
-          onClick={() => { actions.setExplorerVisible(!explorerVisible) }}
-        >
-          ☰
-        </button>
-        <nav className={css.breadcrumb} aria-label={t('explorer.root')}>
-          <span>{t('explorer.root')}</span>
-          {breadcrumb.map((segment, index) => (
-            <span key={`${segment}:${index}`} className={css.breadcrumbSegment}>
-              <span aria-hidden>/</span>{segment}
-            </span>
-          ))}
-          {dirty && <span className={css.dirtyMark} title={t('toolbar.dirty')}>●</span>}
-        </nav>
-        <div className={css.toolbarActions}>
-          <button
-            type="button"
-            className={css.toolbarButton}
-            aria-pressed={showHidden ?? false}
-            title={(showHidden ?? false) ? t('toolbar.hideHidden') : t('toolbar.showHidden')}
-            onClick={toggleHidden}
-          >
-            {(showHidden ?? false) ? '◉' : '○'}
-            <span className={css.wideLabel}>{t('toolbar.showHidden')}</span>
-          </button>
-          <button type="button" className={css.toolbarButton} onClick={refreshTree}>
-            ↻ <span>{t('toolbar.refresh')}</span>
-          </button>
-          <button
-            type="button"
-            className={css.saveButton}
-            disabled={!dirty || active?.saving === true || active?.editable !== true}
-            onClick={() => { void saveCurrent() }}
-          >
-            {active?.saving === true ? t('toolbar.saving') : t('toolbar.save')}
-          </button>
-        </div>
-      </header>
+      <FileToolbar
+        files={openFiles}
+        activePath={activePath}
+        explorerVisible={explorerVisible}
+        activeSaving={active?.saving === true}
+        saveDisabled={!dirty || active?.saving === true || active?.editable !== true}
+        t={t}
+        onToggleExplorer={() => { actions.setExplorerVisible(!explorerVisible) }}
+        onActivateFile={actions.activateFile}
+        onCloseFile={requestClose}
+        onSave={() => { void saveCurrent() }}
+      />
 
       <div className={css.content}>
         {explorerVisible && (
           <aside className={css.explorer} style={{ width: treeWidth }}>
-            <div className={css.explorerHeader}>{t('explorer.title')}</div>
             <Explorer
               snapshot={model}
               expandedPaths={expandedPaths}
               selectedPath={selectedPath}
-              showHidden={showHidden ?? undefined}
               t={t}
               loadDirectory={loadDirectory}
               setExpanded={actions.setExpanded}
@@ -216,15 +189,15 @@ export function FileView({
             : active.loading
               ? <div className={css.centerState} role="status">{t('editor.loading')}</div>
               : active.error !== undefined && active.version === undefined
-                ? <ErrorState error={active.error} t={t} onRetry={() => { openNow(active.path) }} />
+                ? <ErrorState error={active.error} t={t} onRetry={() => { openFile(active.path) }} />
                 : (
                   <>
                     {active.error !== undefined && (
                       <EditorErrorBanner
                         file={active}
                         t={t}
-                        onReload={() => { openNow(active.path) }}
-                        onDismiss={actions.dismissFileError}
+                        onReload={() => { openFile(active.path) }}
+                        onDismiss={() => { actions.dismissFileError(active.path) }}
                       />
                     )}
                     <MonacoEditor
@@ -238,7 +211,7 @@ export function FileView({
                       themeRevision={theme.revision}
                       fontSize={theme.fontSize}
                       initialViewState={active.viewState}
-                      onChange={actions.editContent}
+                      onChange={(content) => { actions.editContent(active.path, content) }}
                       onSave={() => { void saveCurrent() }}
                       onPositionChange={(line, column) => { setCursor({ line, column }) }}
                       onViewStateChange={(viewState) => {
@@ -264,15 +237,19 @@ export function FileView({
         </span>
       </footer>
 
-      {pendingPath !== null && active !== null && (
-        <UnsavedDialog
-          current={active}
-          pendingPath={pendingPath}
+      {requestedClosePath !== null && requestedClose !== null && (
+        <UnsavedCloseDialog
+          current={requestedClose}
           t={t}
-          onCancel={() => { setPendingPath(null) }}
-          onDiscard={() => { openNow(pendingPath) }}
+          onCancel={() => { setRequestedClosePath(null) }}
+          onDiscard={() => {
+            closeFile(requestedClose.path)
+            setRequestedClosePath(null)
+          }}
           onSave={async () => {
-            if (await saveCurrent()) openNow(pendingPath)
+            if (!await save(requestedClose)) return
+            closeFile(requestedClose.path)
+            setRequestedClosePath(null)
           }}
         />
       )}
@@ -283,7 +260,6 @@ export function FileView({
 function EmptyEditor({ t }: { t: FileManagerTranslate }) {
   return (
     <div className={css.emptyEditor}>
-      <div aria-hidden className={css.emptyIcon}>⌘</div>
       <strong>{t('editor.emptyTitle')}</strong>
       <span>{t('editor.emptyBody')}</span>
     </div>
@@ -305,7 +281,7 @@ function ErrorState({
 function EditorErrorBanner({
   file, t, onReload, onDismiss,
 }: {
-  file: FileManagerActiveFile
+  file: FileManagerOpenFile
   t: FileManagerTranslate
   onReload: () => void
   onDismiss: () => void
@@ -322,11 +298,10 @@ function EditorErrorBanner({
   )
 }
 
-function UnsavedDialog({
-  current, pendingPath, t, onCancel, onDiscard, onSave,
+function UnsavedCloseDialog({
+  current, t, onCancel, onDiscard, onSave,
 }: {
-  current: FileManagerActiveFile
-  pendingPath: string
+  current: FileManagerOpenFile
   t: FileManagerTranslate
   onCancel: () => void
   onDiscard: () => void
@@ -381,25 +356,25 @@ function UnsavedDialog({
         onKeyDown={onDialogKeyDown}
       >
         <h2 id={titleId}>{t('confirm.title')}</h2>
-        <p id={descriptionId}>{t('confirm.body')}</p>
+        <p id={descriptionId}>{t('confirm.closeBody')}</p>
         {current.error !== undefined && (
           <p className={css.modalError} role="alert">{fileManagerErrorText(current.error, t)}</p>
         )}
-        <div className={css.modalPaths} title={`${current.path} → ${pendingPath}`}>
-          {basename(current.path)} → {basename(pendingPath)}
-        </div>
+        <div className={css.modalPaths} title={current.path}>{basename(current.path)}</div>
         <div className={css.modalActions}>
           <button ref={cancelRef} type="button" className={css.toolbarButton} onClick={onCancel}>
             {t('confirm.cancel')}
           </button>
-          <button type="button" className={css.toolbarButton} onClick={onDiscard}>{t('confirm.discardAndOpen')}</button>
+          <button type="button" className={css.toolbarButton} onClick={onDiscard}>
+            {t('confirm.discardAndClose')}
+          </button>
           <button
             type="button"
             className={css.saveButton}
             disabled={current.saving || !current.editable}
             onClick={() => { void onSave() }}
           >
-            {current.saving ? t('toolbar.saving') : t('confirm.saveAndOpen')}
+            {current.saving ? t('toolbar.saving') : t('confirm.saveAndClose')}
           </button>
         </div>
       </section>
