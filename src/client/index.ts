@@ -12,7 +12,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-theme/client'
+import type {} from 'dsh-context-picker/client'
 import { FileView, type FileManagerViewInjected } from './FileView.tsx'
+import { createFileManagerContextProvider } from './context-provider.ts'
+import { FileManagerContextSelections } from './context-selection.ts'
 import { createFileManagerViewStore } from './file-store.ts'
 import { en, NS, zh } from './locales.ts'
 import { clientError, FileManagerSessionModel } from './model.ts'
@@ -38,6 +41,8 @@ function registerUi(ctx: Context): void {
 
   const models = new WeakMap<SessionBinding, FileManagerSessionModel>()
   const liveModels = new Set<FileManagerSessionModel>()
+  const selections = new FileManagerContextSelections()
+  ctx.effect(() => () => { selections.dispose() }, 'dsh-file-manager: Context Picker selections')
   const modelFor = (binding: SessionBinding): FileManagerSessionModel => {
     const existing = models.get(binding)
     if (existing !== undefined) return existing
@@ -51,6 +56,7 @@ function registerUi(ctx: Context): void {
     binding.ctx.effect(() => () => {
       model.dispose()
       liveModels.delete(model)
+      selections.clear(binding.sessionId)
     }, `dsh-file-manager: Session ${binding.sessionId}`)
     return model
   }
@@ -112,9 +118,22 @@ function registerUi(ctx: Context): void {
             return false
           }
         },
+        publishContextSelection: (selection) => {
+          if (selection === null) selections.clear(sessionId)
+          else selections.publish({ sessionId, ...selection })
+        },
       }
     },
   }, FileView))
+
+  // Optional and load-order independent: File Manager remains fully usable
+  // when Context Picker is absent, and registers whenever it later appears.
+  ctx.inject(['contextPicker'], (scope) => {
+    scope.effect(
+      () => scope.contextPicker.registerProvider(createFileManagerContextProvider(selections, t)),
+      'dsh-file-manager: current-selection Context Picker Provider',
+    )
+  })
 
 }
 

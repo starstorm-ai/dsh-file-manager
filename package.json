@@ -107,10 +107,16 @@
     "@deepseek-ai/cordis": "workspace:^",
     "@deepseek-ai/dsh-api-gateway": "workspace:^",
     "@deepseek-ai/dsh-api-session-controller": "workspace:^",
+    "dsh-context-picker": "^0.1.0",
     "@deepseek-ai/dsh-fs": "workspace:^",
     "@deepseek-ai/dsh-sandbox": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "dsh-context-picker": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:^",
@@ -130,6 +136,7 @@
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-typert-generator": "workspace:^",
     "@deepseek-ai/dsh-typert-protocol": "workspace:^",
+    "dsh-context-picker": "link:../dsh-context-picker",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",

@@ -7,6 +7,17 @@ import { languageForPath } from './language.ts'
 import { normalizeMonacoColor } from './monaco-theme.ts'
 import css from './styles.module.css'
 
+export interface MonacoTextSelection {
+  readonly text: string
+  readonly range: {
+    readonly startLine: number
+    readonly startColumn: number
+    readonly endLine: number
+    readonly endColumn: number
+  }
+  readonly modelVersion: number
+}
+
 export interface MonacoEditorProps {
   readonly sessionId: SessionId
   readonly path: string
@@ -20,6 +31,7 @@ export interface MonacoEditorProps {
   readonly onChange: (value: string) => void
   readonly onSave: () => void
   readonly onPositionChange: (line: number, column: number) => void
+  readonly onSelectionChange: (selection: MonacoTextSelection | null) => void
   readonly onViewStateChange: (viewState: monaco.editor.ICodeEditorViewState) => void
 }
 
@@ -69,10 +81,12 @@ export function MonacoEditor(props: MonacoEditorProps) {
   const onChangeRef = useRef(props.onChange)
   const onSaveRef = useRef(props.onSave)
   const onPositionRef = useRef(props.onPositionChange)
+  const onSelectionRef = useRef(props.onSelectionChange)
   const onViewStateRef = useRef(props.onViewStateChange)
   onChangeRef.current = props.onChange
   onSaveRef.current = props.onSave
   onPositionRef.current = props.onPositionChange
+  onSelectionRef.current = props.onSelectionChange
   onViewStateRef.current = props.onViewStateChange
 
   useLayoutEffect(() => {
@@ -107,14 +121,38 @@ export function MonacoEditor(props: MonacoEditorProps) {
     })
     liveRef.current = { editor, model }
     if (props.initialViewState !== undefined) editor.restoreViewState(props.initialViewState)
+    const publishSelection = (): void => {
+      const selection = editor.getSelection()
+      if (selection === null || selection.isEmpty()) {
+        onSelectionRef.current(null)
+        return
+      }
+      const start = selection.getStartPosition()
+      const end = selection.getEndPosition()
+      onSelectionRef.current({
+        text: model.getValueInRange(selection),
+        range: {
+          startLine: start.lineNumber,
+          startColumn: start.column,
+          endLine: end.lineNumber,
+          endColumn: end.column,
+        },
+        modelVersion: model.getVersionId(),
+      })
+    }
     const initialPosition = editor.getPosition()
     if (initialPosition !== null) {
       onPositionRef.current(initialPosition.lineNumber, initialPosition.column)
     }
-    const change = model.onDidChangeContent(() => { onChangeRef.current(model.getValue()) })
+    publishSelection()
+    const change = model.onDidChangeContent(() => {
+      onChangeRef.current(model.getValue())
+      publishSelection()
+    })
     const cursor = editor.onDidChangeCursorPosition(({ position }) => {
       onPositionRef.current(position.lineNumber, position.column)
     })
+    const selection = editor.onDidChangeCursorSelection(publishSelection)
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       onSaveRef.current()
     })
@@ -127,6 +165,7 @@ export function MonacoEditor(props: MonacoEditorProps) {
       observer.disconnect()
       change.dispose()
       cursor.dispose()
+      selection.dispose()
       editor.dispose()
       model.dispose()
       liveRef.current = undefined

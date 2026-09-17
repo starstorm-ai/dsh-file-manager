@@ -19,6 +19,7 @@ import { languageForPath, languageLabel } from './language.ts'
 import type { FileManagerClientError } from './model.ts'
 import { MonacoEditor } from './MonacoEditor.tsx'
 import { fileManagerErrorText, NS, type FileManagerTranslate } from './locales.ts'
+import type { FileManagerContextSelectionUpdate } from './context-selection.ts'
 import css from './styles.module.css'
 
 type FileManagerViewStore = ReturnType<typeof createFileManagerViewStore>
@@ -30,6 +31,7 @@ export interface FileManagerViewInjected {
   readonly openFile: (path: string) => void
   readonly closeFile: (path: string) => void
   readonly saveFile: (path: string, content: string, expectedVersion: string) => Promise<boolean>
+  readonly publishContextSelection: (selection: FileManagerContextSelectionUpdate | null) => void
 }
 
 export type FileManagerViewProps = ConvViewProps
@@ -45,7 +47,7 @@ function basename(path: string): string {
 export function FileView({
   sessionId, viewRequest, completeViewRequest,
   useFileManager, useTheme, useStore, actions,
-  loadDirectory, openFile, closeFile, saveFile, t,
+  loadDirectory, openFile, closeFile, saveFile, publishContextSelection, t,
 }: FileManagerViewProps) {
   const model = useFileManager(value => value)
   const theme = useTheme(value => value)
@@ -91,6 +93,11 @@ export function FileView({
   }, [hasDirtyFiles])
 
   useEffect(() => { setCursor({ line: 1, column: 1 }) }, [activePath])
+  useEffect(() => {
+    if (active === null || active.loading || active.version === undefined) {
+      publishContextSelection(null)
+    }
+  }, [active, publishContextSelection])
   useEffect(() => () => { resizeCleanup.current?.() }, [])
 
   const save = useCallback(async (file: FileManagerOpenFile): Promise<boolean> => {
@@ -214,6 +221,17 @@ export function FileView({
                       onChange={(content) => { actions.editContent(active.path, content) }}
                       onSave={() => { void saveCurrent() }}
                       onPositionChange={(line, column) => { setCursor({ line, column }) }}
+                      onSelectionChange={(selection) => {
+                        publishContextSelection(selection === null
+                          ? null
+                          : {
+                              path: active.path,
+                              language,
+                              text: selection.text,
+                              range: selection.range,
+                              revision: `monaco:${active.loadRequestId}:${selection.modelVersion}`,
+                            })
+                      }}
                       onViewStateChange={(viewState) => {
                         actions.setEditorViewState(active.path, viewState)
                       }}

@@ -87,6 +87,9 @@ importers:
       '@types/react-dom':
         specifier: ~18.3.0
         version: 18.3.7(@types/react@18.3.31)
+      dsh-context-picker:
+        specifier: link:../dsh-context-picker
+        version: link:../dsh-context-picker
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
@@ -15969,7 +15972,9 @@ snapshots:
 
   dom-accessibility-api@0.5.16: {}
 
-  dompurify@3.4.8: {}
+  dompurify@3.4.8:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
 
   dts-resolver@3.0.0: {}
 

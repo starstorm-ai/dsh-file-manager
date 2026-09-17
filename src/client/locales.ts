@@ -47,6 +47,9 @@ export const zh = {
   'confirm.discardAndClose': '放弃并关闭',
   'confirm.cancel': '取消',
   'status.workspaceLocked': '范围已锁定到当前会话工作区',
+  'context.section': 'file-manager 当前选区',
+  'context.selection': '当前选区 · {file}',
+  'context.range': '{path} · 第 {startLine}:{startColumn}–{endLine}:{endColumn} 行',
 } as const
 
 export type FileManagerLocaleKey = keyof typeof zh
@@ -140,4 +143,7 @@ export const en: Record<FileManagerLocaleKey, string> = {
   'confirm.discardAndClose': 'Discard and close',
   'confirm.cancel': 'Cancel',
   'status.workspaceLocked': 'Scope locked to this Session workspace',
+  'context.section': 'File Manager selection',
+  'context.selection': 'Current selection · {file}',
+  'context.range': '{path} · {startLine}:{startColumn}–{endLine}:{endColumn}',
 }
